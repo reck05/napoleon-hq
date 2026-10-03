@@ -1,6 +1,6 @@
 # Napoleon HQ · Codex
 
-A local headquarters for Codex. Choose a project, give Napoleon an objective and follow its conversation, tools and subagents in real time. The coordinator follows the instructions in `coordinator.md`: focus, clear missions, autonomy, logistics and verification.
+A local headquarters for Codex and Claude Code. Choose a project, give Napoleon an objective and follow its conversation, tools and subagents in real time. The coordinator follows the instructions in `coordinator.md`: focus, clear missions, autonomy, logistics and verification.
 
 - **`codex-bridge.mjs`**: runs Codex App Server over stdio, using your existing Codex login. Streams conversation and tool events and sends objectives, follow-up directions and decisions to Codex. It manages only the sessions created in HQ.
 - **`server.mjs`**: Node server on `127.0.0.1:4517`. Serves the app and streams events over SSE. Mutations require the page's per-run token and a matching Host and Origin.
@@ -43,7 +43,7 @@ The original Claude mode and peer MCP bridge are also available:
 npm run serve -- --engine=claude
 ```
 
-This mode reads `~/.claude/napoleon/state.json`, queues orders for the Claude mod, and supports `ask_claude`, `get_claude_reply` and `claude_status` through `peer-mcp.mjs`. Each peer appears as a dashed node with its conversation. `NAPOLEON_ENGINE=claude` selects the same mode. Codex remains the default.
+This mode reads `~/.claude/napoleon/state.json`, queues orders for the Claude mod, and supports `ask_claude`, `get_claude_reply` and `claude_status` through `peer-mcp.mjs`. Each peer appears as a dashed node with its conversation. `NAPOLEON_ENGINE=claude` selects the same mode. Codex remains the default. The normal panel also includes a Codex / Claude Code selector backed by the official Claude Agent SDK and your locally installed Claude Code. Run `claude auth login` once on this computer. Both assistants use the selected project, preserve their own HQ conversations, and display permission requests in the panel. Switching assistants requires the current task to finish or be stopped. This controls sessions created in HQ; existing desktop conversations are not imported. The legacy mod remains a separate compatibility mode.
 
 Load the Claude mod with `claude --plugin-dir mod/orquestador`. The mod still contains Windows paths at the top of `hooks/register.tsx`; configure these for your machine before using it. Its automatic server launch selects Claude mode explicitly. On Mac use `npm run serve`; `Napoleon HQ.vbs` is the Windows launcher.
 

@@ -173,7 +173,7 @@ export default function App() {
   const focusRef = useRef<(id: string) => void>(() => undefined)
   const { state, link, connection } = useHQ(mode, deviceRevision)
   const view = state ?? EMPTY
-  const deviceKey = `${deviceRevision}:${connection?.deviceId ?? 'local'}`
+  const deviceKey = `${deviceRevision}:${connection?.deviceId ?? 'local'}:${connection?.engine ?? 'codex'}`
   const lastDeviceId = useRef<string | undefined>(undefined)
   const phoneOpened = useRef(false)
   useEffect(() => {
@@ -224,8 +224,8 @@ export default function App() {
   return (
     <ReactFlowProvider>
       <div className="app">
-        <TopBar state={state} mode={mode} link={link} isTimelineOn={isTimelineOn} onMode={toggleMode} onTimeline={toggleTimeline} onPalette={() => setPalette(true)} projectsEnabled={connection?.engine !== 'claude'} onProjects={() => { setMode('live'); setProjectsOpen(true) }} onDevices={() => { setProjectsOpen(false); setDevicesOpen(true) }} deviceName={connection?.deviceLabel ?? deviceName} />
-        {mode === 'live' && connection?.engine !== 'claude' ? <CampaignBar key={deviceKey} connection={connection} onProjects={() => setProjectsOpen(true)} onConversation={() => setSelected(NAPOLEON)} /> : <div />}
+        <TopBar state={state} mode={mode} link={link} isTimelineOn={isTimelineOn} onMode={toggleMode} onTimeline={toggleTimeline} onPalette={() => setPalette(true)} projectsEnabled={(connection?.managed || connection?.engine !== 'claude')} onProjects={() => { setMode('live'); setProjectsOpen(true) }} onDevices={() => { setProjectsOpen(false); setDevicesOpen(true) }} deviceName={connection?.deviceLabel ?? deviceName} />
+        {mode === 'live' && (connection?.managed || connection?.engine !== 'claude') ? <CampaignBar key={deviceKey} connection={connection} onProjects={() => setProjectsOpen(true)} onConversation={() => setSelected(NAPOLEON)} /> : <div />}
         <main className="stage">
           <Graph state={view} selected={selected} filter={filter} onSelect={setSelected} fitRef={fitRef} focusRef={focusRef} />
 
@@ -240,7 +240,7 @@ export default function App() {
           <AnimatePresence>
             {view.agents.length === 0 && !view.napoleon.convo?.length && mode === 'live' && (
               <motion.p className="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                {connection?.engine === 'claude' ? 'Sin agentes. Abre Claude Code con el mod orquestador para conectar la campaña.' : connection?.activeProjectId ? 'Tu coordinador está listo. Escribe el objetivo arriba para empezar.' : 'Selecciona un proyecto para conectar tu campaña con Codex.'}
+                {connection?.engine === 'claude' && !connection.managed ? 'Sin agentes. Abre Claude Code con el mod orquestador para conectar la campaña.' : connection?.activeProjectId ? 'Tu coordinador está listo. Escribe el objetivo arriba para empezar.' : 'Selecciona un proyecto para conectar tu campaña.'}
               </motion.p>
             )}
           </AnimatePresence>
@@ -249,7 +249,7 @@ export default function App() {
             {selected && <Inspector key={deviceKey} state={{ ...view, agents: displayAgents }} id={selected} isDemo={mode === 'demo'} deviceId={connection?.deviceId} connected={connection?.connected ?? false} onClose={() => setSelected(undefined)} onSelect={id => { setSelected(id); focusRef.current(id) }} />}
           </AnimatePresence>
         </main>
-        {isProjectsOpen && connection?.engine !== 'claude' && <Projects key={deviceKey} connection={connection} onClose={() => setProjectsOpen(false)} onSelected={() => { setProjectsOpen(false); setSelected(NAPOLEON) }} />}
+        {isProjectsOpen && (connection?.managed || connection?.engine !== 'claude') && <Projects key={deviceKey} connection={connection} onClose={() => setProjectsOpen(false)} onSelected={() => { setProjectsOpen(false); setSelected(NAPOLEON) }} />}
         {isDevicesOpen && <Devices installation={installation} onClose={() => setDevicesOpen(false)} onSelected={() => { setSelected(undefined); setFilter(undefined); setMode('live'); setDeviceRevision(r => r + 1); setDevicesOpen(false); setProjectsOpen(true) }} />}
         <Requests key={deviceKey} connection={connection} />
         <AnimatePresence initial={false}>

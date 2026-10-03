@@ -42,4 +42,4 @@ export const NAPOLEON = 'napoleon'
 
 export type Project = { id: string; name: string; kind: 'local' | 'chatgpt'; path: string | null; url: string | null; available: boolean; active: boolean }
 export type PendingRequest = { id: string | number; method: string; params: { command?: string; reason?: string; threadId?: string; permissions?: unknown; questions?: { id: string; question: string; options?: { label: string; description: string }[] }[] } }
-export type Connection = { engine: 'codex' | 'claude'; connected: boolean; authenticated: boolean; error: string; activeProjectId: string | null; projectName: string | null; busy: boolean; requests: PendingRequest[]; deviceId?: string; deviceLabel?: string }
+export type Connection = { engine: 'codex' | 'claude'; managed?: boolean; engines?: ('codex' | 'claude')[]; connected: boolean; authenticated: boolean; error: string; activeProjectId: string | null; projectName: string | null; busy: boolean; requests: PendingRequest[]; deviceId?: string; deviceLabel?: string }

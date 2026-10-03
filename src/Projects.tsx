@@ -28,7 +28,7 @@ export function Projects({ connection, onClose, onSelected }: { connection: Conn
   return (
     <dialog ref={dialog} className="projects-dialog" onCancel={onClose} aria-labelledby="projects-title">
       <div className="projects-head"><div><span className="eyebrow">TU CUARTEL GENERAL</span><h2 id="projects-title">Elige el terreno.</h2></div><button className="txt" onClick={onClose} aria-label="Cerrar proyectos">×</button></div>
-      <p className="projects-intro">Selecciona una carpeta y dale un objetivo a Napoleon. Codex ejecutará el trabajo con tus instrucciones de coordinación.</p>
+      <p className="projects-intro">Selecciona una carpeta y dale un objetivo a Napoleon. El asistente seleccionado ejecutará el trabajo con tus instrucciones de coordinación.</p>
       <div className="projects-tabs">
         <button className={`txt ${kind === 'local' ? 'is-on' : ''}`} onClick={() => setKind('local')}>En esta computadora <span>{projects.filter(p => p.available).length}</span></button>
         <button className={`txt ${kind === 'chatgpt' ? 'is-on' : ''}`} onClick={() => setKind('chatgpt')}>ChatGPT <span>{projects.filter(p => p.kind === 'chatgpt').length}</span></button>
@@ -60,11 +60,18 @@ export function CampaignBar({ connection, onProjects, onConversation }: { connec
     catch (e) { setError(e instanceof Error ? e.message : 'No se pudo entregar la tarea') }
     finally { setSending(false) }
   }
+  async function changeEngine(engine: 'codex' | 'claude') {
+    setSending(true); setError('')
+    try { await post('/api/engine/select', { engine, deviceId: connection?.deviceId }) }
+    catch (e) { setError(e instanceof Error ? e.message : 'No se pudo cambiar de asistente') }
+    finally { setSending(false) }
+  }
+  const assistant = connection?.engine === 'claude' ? 'Claude Code' : 'Codex'
   async function stop() {
     try { await post('/api/interrupt', { deviceId: connection?.deviceId }) } catch (e) { setError(e instanceof Error ? e.message : 'No se pudo detener la tarea') }
   }
   return <div className="campaign">
-    <div className="campaign-context"><span className={`st ${connection?.connected && connection?.authenticated ? 'st-live' : 'st-off'}`}><i />{connection?.authenticated && connection?.connected ? 'Codex conectado' : 'conectando Codex'}</span><button className="txt is-on" onClick={onProjects}>{connection?.projectName ?? 'Seleccionar proyecto'} ↓</button><span className="faint">coordinador configurado</span></div>
+    <div className="campaign-context"><span className={`st ${connection?.connected && connection?.authenticated ? 'st-live' : 'st-off'}`}><i />{connection?.authenticated && connection?.connected ? `${assistant} conectado` : `Conectar ${assistant}`}</span><button className="txt is-on" onClick={onProjects}>{connection?.projectName ?? 'Seleccionar proyecto'} ↓</button><span className="faint">coordinador configurado</span>{connection?.engines?.map(engine => <button key={engine} type="button" className={`txt ${engine === connection.engine ? 'is-on' : ''}`} aria-pressed={engine === connection.engine} disabled={sending || connection.busy} onClick={() => void changeEngine(engine)}>{engine === 'claude' ? 'Claude Code' : 'Codex'}</button>)}</div>
     <form className="campaign-form" onSubmit={e => { e.preventDefault(); void send() }}>
       <input aria-label="Objetivo de la campaña" placeholder={connection?.activeProjectId ? '¿Qué quieres conseguir? Define el resultado y las restricciones…' : 'Selecciona un proyecto para empezar…'} value={draft} onChange={e => setDraft(e.target.value)} disabled={!connection?.activeProjectId || !connection?.connected || !connection?.authenticated} />
       <button className="campaign-send" disabled={sending || !draft.trim() || !connection?.activeProjectId || !connection.connected || !connection.authenticated}>{sending ? 'enviando…' : connection?.busy ? 'dar directriz →' : 'iniciar campaña →'}</button>
@@ -74,7 +81,7 @@ export function CampaignBar({ connection, onProjects, onConversation }: { connec
   </div>
 }
 
-function RequestCard({ request, deviceId }: { request: PendingRequest; deviceId?: string }) {
+function RequestCard({ request, deviceId, assistant }: { request: PendingRequest; deviceId?: string; assistant: string }) {
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -83,8 +90,8 @@ function RequestCard({ request, deviceId }: { request: PendingRequest; deviceId?
     try { await post('/api/respond', { id: request.id, decision, answers, deviceId }) }
     catch (e) { setError(e instanceof Error ? e.message : 'No se pudo responder'); setBusy(false) }
   }
-  return <section className="request-card" aria-label="Decisión solicitada por Codex">
-    <strong>Codex necesita una decisión</strong>
+  return <section className="request-card" aria-label={`Decisión solicitada por ${assistant}`}>
+    <strong>{assistant} necesita una decisión</strong>
     {request.params.questions?.map(q => <label key={q.id}>{q.question}
       {q.options && <div className="request-options">{q.options.map(o => <button type="button" className="txt" key={o.label} onClick={() => setAnswers(a => ({ ...a, [q.id]: o.label }))}>{o.label}</button>)}</div>}
       <input value={answers[q.id] ?? ''} onChange={e => setAnswers(a => ({ ...a, [q.id]: e.target.value }))} />
@@ -97,5 +104,5 @@ function RequestCard({ request, deviceId }: { request: PendingRequest; deviceId?
 
 export function Requests({ connection }: { connection: Connection | null }) {
   if (!connection?.requests.length) return null
-  return <aside className="requests" aria-live="polite">{connection.requests.map(r => <RequestCard key={r.id} request={r} deviceId={connection.deviceId} />)}</aside>
+  return <aside className="requests" aria-live="polite">{connection.requests.map(r => <RequestCard key={r.id} request={r} deviceId={connection.deviceId} assistant={connection.engine === 'claude' ? 'Claude Code' : 'Codex'} />)}</aside>
 }

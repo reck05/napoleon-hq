@@ -5,7 +5,7 @@ import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { CodexBridge } from './codex-bridge.mjs'
+import { AssistantBridge } from './assistant-bridge.mjs'
 import { DeviceManager } from './devices.mjs'
 import { createAccess } from './access.mjs'
 import { protect } from './secure.mjs'
@@ -46,7 +46,7 @@ const closeStreams = () => {
 }
 let timer
 let seq = 0
-const bridge = ENGINE === 'codex' ? new CodexBridge({ dir: DIR, root: ROOT, onChange: () => broadcast() }) : null
+const bridge = ENGINE === 'codex' ? new AssistantBridge({ dir: DIR, root: ROOT, onChange: () => broadcast() }) : null
 const readState = () => {
   if (bridge) return JSON.stringify(bridge.state())
   try { return fs.readFileSync(STATE, 'utf8') } catch { return '' }
@@ -84,7 +84,8 @@ async function send(req, res, route) {
   const msg = await readBody(req)
   if (!devices.authenticated(req) && msg.deviceId && msg.deviceId !== devices.data.selectedId) return json(res, 409, { error: 'La computadora seleccionada cambió. Revisa el destino antes de enviar el objetivo.' })
   if (route !== '/api/send') {
-    if (!bridge) return json(res, 409, { error: 'Esta acción requiere el modo Codex' })
+    if (!bridge) return json(res, 409, { error: 'Esta acción requiere un asistente conectado' })
+    if (route === '/api/engine/select') return json(res, 200, await bridge.selectEngine(msg.engine))
     if (route === '/api/project/select') return json(res, 200, await bridge.select(msg.projectId))
     if (route === '/api/interrupt') return json(res, 200, await bridge.interrupt())
     if (route === '/api/respond') return json(res, 200, bridge.answer(msg.id, msg.decision, msg.answers))
@@ -210,13 +211,13 @@ const server = http.createServer(async (req, res) => {
     }
     const selected = !deviceAuthenticated && devices.selected()
     const routedGet = ['/api/projects', '/api/connection', '/api/events'].includes(url.pathname) && req.method === 'GET'
-    const routedPost = ['/api/send', '/api/project/select', '/api/interrupt', '/api/respond'].includes(url.pathname) && req.method === 'POST'
+    const routedPost = ['/api/send', '/api/project/select', '/api/engine/select', '/api/interrupt', '/api/respond'].includes(url.pathname) && req.method === 'POST'
     if (selected && (routedGet || routedPost)) return await proxyDevice(req, res, url, selected)
     if (url.pathname === '/api/health') return json(res, 200, { ok: true, engine: ENGINE })
     if (url.pathname === '/api/projects') return json(res, 200, { projects: bridge?.projects() ?? [] })
     if (url.pathname === '/api/connection') return json(res, 200, connection())
     if (url.pathname.startsWith('/api/peer/')) return await peer(req, res, url)
-    if (['/api/send', '/api/project/select', '/api/interrupt', '/api/respond'].includes(url.pathname) && req.method === 'POST') return await send(req, res, url.pathname)
+    if (['/api/send', '/api/project/select', '/api/engine/select', '/api/interrupt', '/api/respond'].includes(url.pathname) && req.method === 'POST') return await send(req, res, url.pathname)
     if (url.pathname === '/api/events' && req.method === 'GET') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
       const state = readState()
