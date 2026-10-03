@@ -7,6 +7,7 @@ import { Inspector } from './Inspector'
 import { bestDir, bounds, lineage, NODE, parentOf, useFamilyTree, type Dir, type XY } from './layout'
 import { AgentNode, NapoleonNode, type AgentNodeT, type NapoleonNodeT } from './nodes'
 import { Palette } from './Palette'
+import { CampaignBar, Projects, Requests } from './Projects'
 import { Timeline } from './Timeline'
 import { TopBar } from './TopBar'
 import { useHQ, usePulses, type Mode } from './useHQ'
@@ -151,9 +152,10 @@ export default function App() {
   const [filter, setFilter] = useState<string>()
   const [selected, setSelected] = useState<string>()
   const [isPaletteOpen, setPalette] = useState(false)
+  const [isProjectsOpen, setProjectsOpen] = useState(() => !new URLSearchParams(location.search).has('demo'))
   const fitRef = useRef<() => void>(() => undefined)
   const focusRef = useRef<(id: string) => void>(() => undefined)
-  const { state, link } = useHQ(mode)
+  const { state, link, connection } = useHQ(mode)
   const view = state ?? EMPTY
 
   const toggleMode = useCallback(() => { setSelected(undefined); setMode(m => (m === 'demo' ? 'live' : 'demo')) }, [])
@@ -178,7 +180,8 @@ export default function App() {
   return (
     <ReactFlowProvider>
       <div className="app">
-        <TopBar state={state} mode={mode} link={link} isTimelineOn={isTimelineOn} onMode={toggleMode} onTimeline={toggleTimeline} onPalette={() => setPalette(true)} />
+        <TopBar state={state} mode={mode} link={link} isTimelineOn={isTimelineOn} onMode={toggleMode} onTimeline={toggleTimeline} onPalette={() => setPalette(true)} onProjects={() => { setMode('live'); setProjectsOpen(true) }} />
+        {mode === 'live' ? <CampaignBar connection={connection} onProjects={() => setProjectsOpen(true)} onConversation={() => setSelected(NAPOLEON)} /> : <div />}
         <main className="stage">
           <Graph state={view} selected={selected} filter={filter} onSelect={setSelected} fitRef={fitRef} focusRef={focusRef} />
 
@@ -191,9 +194,9 @@ export default function App() {
           </nav>
 
           <AnimatePresence>
-            {view.agents.length === 0 && mode === 'live' && (
+            {view.agents.length === 0 && !view.napoleon.convo?.length && mode === 'live' && (
               <motion.p className="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                Sin agentes. Dile a Claude «me llegó esta tarea…» y la verás nacer aquí. <button className="txt is-on" onClick={toggleMode}>ver demo</button>
+                {connection?.activeProjectId ? 'Tu coordinador está listo. Escribe el objetivo arriba para empezar.' : 'Selecciona un proyecto para conectar tu campaña con Codex.'}
               </motion.p>
             )}
           </AnimatePresence>
@@ -202,6 +205,8 @@ export default function App() {
             {selected && <Inspector state={view} id={selected} isDemo={mode === 'demo'} onClose={() => setSelected(undefined)} onSelect={id => { setSelected(id); focusRef.current(id) }} />}
           </AnimatePresence>
         </main>
+        {isProjectsOpen && <Projects connection={connection} onClose={() => setProjectsOpen(false)} onSelected={() => { setProjectsOpen(false); setSelected(NAPOLEON) }} />}
+        <Requests connection={connection} />
         <AnimatePresence initial={false}>
           {isTimelineOn && (
             <motion.footer className="dock" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>

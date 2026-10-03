@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { clockOf } from './util'
 import type { Msg } from './types'
-
-const token = () => document.querySelector<HTMLMetaElement>('meta[name="hq-token"]')?.content ?? ''
+import { post } from './api'
 
 function Bubble({ m }: { m: Msg & { isAnswer?: boolean } }) {
   const [isOpen, setOpen] = useState(false)
@@ -48,9 +47,8 @@ export function Conversation({ to, agentName, convo, answer, isLive, isDemo }: {
     setLocal(l => [...l, { t: Date.now(), from: 'tú', text, status: 'enviando' }])
     setDraft('')
     try {
-      const r = await fetch('/api/send', { method: 'POST', headers: { 'content-type': 'application/json', 'x-hq-token': token() }, body: JSON.stringify({ to, text }) })
-      if (!r.ok) throw new Error(r.status === 403 ? 'el servidor rechazó el token: recarga la página' : `error ${r.status}`)
-      setLocal(l => l.map(m => (m.text === text && m.status === 'enviando' ? { ...m, status: 'en cola' } : m)))
+      await post('/api/send', { to, text })
+      setLocal(l => l.map(m => (m.text === text && m.status === 'enviando' ? { ...m, status: 'entregado' } : m)))
     } catch (e) {
       setLocal(l => l.filter(m => m.text !== text))
       setDraft(text)

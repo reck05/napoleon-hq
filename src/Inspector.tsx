@@ -80,7 +80,7 @@ export function Inspector({ state, id, isDemo, onClose, onSelect }: Props) {
           to={id}
           agentName={isRoot ? 'Napoleon' : 'agente'}
           convo={(isRoot ? state.napoleon.convo : a!.convo) ?? []}
-          answer={!isRoot && a!.answer ? { t: a!.endedAt ?? now, text: a!.answer } : undefined}
+          answer={!isRoot && a!.answer && !a!.convo?.some(m => m.text === a!.answer) ? { t: a!.endedAt ?? now, text: a!.answer } : undefined}
           isLive={isRoot || a!.status === 'running'}
           isDemo={isDemo}
         />

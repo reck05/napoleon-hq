@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { demoState } from './demo'
-import { NAPOLEON, type HQState, type Pulse } from './types'
+import { NAPOLEON, type Connection, type HQState, type Pulse } from './types'
 
 export type Mode = 'live' | 'demo'
 export type Link = 'connecting' | 'live' | 'offline'
@@ -9,6 +9,7 @@ export type Link = 'connecting' | 'live' | 'offline'
 export function useHQ(mode: Mode) {
   const [state, setState] = useState<HQState | null>(null)
   const [link, setLink] = useState<Link>('connecting')
+  const [connection, setConnection] = useState<Connection | null>(null)
 
   useEffect(() => {
     setState(null)
@@ -19,6 +20,9 @@ export function useHQ(mode: Mode) {
     }
     setLink('connecting')
     const es = new EventSource('/api/events')
+    es.addEventListener('connection', ev => {
+      try { setConnection(JSON.parse((ev as MessageEvent).data)) } catch { /* incomplete event */ }
+    })
     es.addEventListener('state', ev => {
       try {
         setState(JSON.parse((ev as MessageEvent).data))
@@ -30,7 +34,7 @@ export function useHQ(mode: Mode) {
     return () => es.close()
   }, [mode])
 
-  return { state, link }
+  return { state, link, connection }
 }
 
 /** Diffs consecutive states into pulses that travel the branches: down for each tool call, up when a report comes home. */

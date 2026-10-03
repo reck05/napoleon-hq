@@ -15,7 +15,7 @@ function Count({ value, format = (n: number) => String(Math.round(n)) }: { value
   return <motion.b>{text}</motion.b>
 }
 
-type Props = { state: HQState | null; mode: Mode; link: Link; isTimelineOn: boolean; onMode: () => void; onTimeline: () => void; onPalette: () => void }
+type Props = { state: HQState | null; mode: Mode; link: Link; isTimelineOn: boolean; onMode: () => void; onTimeline: () => void; onPalette: () => void; onProjects: () => void }
 
 export function TopBar(p: Props) {
   const now = useNow(1000)
@@ -39,6 +39,7 @@ export function TopBar(p: Props) {
         <span><b>{p.state?.sessionStart ? fmtDur(now - p.state.sessionStart) : '—'}</b></span>
       </div>
       <div className="top-r">
+        <button className="txt is-on" onClick={p.onProjects}>proyectos</button>
         <button className={`txt ${p.isTimelineOn ? 'is-on' : ''}`} onClick={p.onTimeline}>tiempo</button>
         <button className={`txt ${p.mode === 'demo' ? 'is-on' : ''}`} onClick={p.onMode}>demo</button>
         <button className="txt" onClick={p.onPalette}>⌘K</button>
