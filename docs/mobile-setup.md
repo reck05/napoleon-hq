@@ -2,6 +2,8 @@
 
 La configuración preparada usa una conexión privada de Tailscale. Cada computadora ejecuta su propio Napoleon y Codex; desde el teléfono eliges en cuál trabajar. Tus archivos y las cuentas de Codex se quedan en cada equipo.
 
+Napoleon exige autenticación también en la computadora donde se ejecuta. El preparador y los accesos directos abren una sesión privada automáticamente. Si abres `localhost:4517` a mano y aparece «Código de acceso», ejecuta `node scripts/mobile-setup.mjs open` desde la carpeta de Napoleon. No compartas el enlace de acceso ni los códigos de emparejamiento.
+
 ## 1. Conecta el teléfono
 
 Instala [Tailscale](https://tailscale.com/download) en el teléfono y entra con **la misma cuenta que utilizas en las computadoras**. Activa la conexión. Entra en Tailscale también en este Mac; Napoleon preparará automáticamente su dirección HTTPS privada después del inicio de sesión. Encontrarás esa dirección en el panel **Tus computadoras**.
@@ -33,6 +35,7 @@ Estas opciones sirven para quien te ayuda a administrarlo; el uso diario se hace
 
 ```bash
 node scripts/mobile-setup.mjs status
+node scripts/mobile-setup.mjs open
 node scripts/mobile-setup.mjs configure --allow-sleep
 node scripts/mobile-setup.mjs configure --keep-awake
 node scripts/mobile-setup.mjs remove-autostart

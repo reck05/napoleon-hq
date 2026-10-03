@@ -15,7 +15,12 @@ export class CodexBridge {
     this.dir = dir
     this.root = root
     this.onChange = onChange
-    fs.mkdirSync(dir, { recursive: true })
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+    if (process.platform !== 'win32') {
+      fs.chmodSync(dir, 0o700)
+      const savedFile = path.join(dir, 'bridge.json')
+      if (fs.existsSync(savedFile)) fs.chmodSync(savedFile, 0o600)
+    }
     this.saved = readJSON(path.join(dir, 'bridge.json'), { activeProjectId: null, sessions: {} })
     this.catalog = readJSON(path.join(dir, 'projects.json'), [])
     this.sessions = new Map()
@@ -277,7 +282,9 @@ export class CodexBridge {
       }
       this.saved.sessions[projectId] = id
       this.saved.activeProjectId = projectId
-      fs.writeFileSync(path.join(this.dir, 'bridge.json'), JSON.stringify(this.saved, null, 2))
+      const file = path.join(this.dir, 'bridge.json')
+      fs.writeFileSync(file, JSON.stringify(this.saved, null, 2), { mode: 0o600 })
+      if (process.platform !== 'win32') fs.chmodSync(file, 0o600)
       this.changed()
       return { ok: true, projectId, threadId: id }
     } finally { this.selection = null }

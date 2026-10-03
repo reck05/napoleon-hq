@@ -8,7 +8,8 @@ const respond = (res, status, body) => { res.writeHead(status, { 'content-type':
 const localAddress = value => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(value)
 
 export function createAccess({ dir, port, publicUrl: configured }) {
-  fs.mkdirSync(dir, { recursive: true })
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+  if (process.platform !== 'win32') fs.chmodSync(dir, 0o700)
   const file = path.join(dir, 'access.key')
   if (!fs.existsSync(file)) fs.writeFileSync(file, crypto.randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' })
   protect(file)
@@ -27,6 +28,7 @@ export function createAccess({ dir, port, publicUrl: configured }) {
   const hosts = new Set([...localHosts, ...(publicUrl ? [new URL(publicUrl).host] : [])])
   const origins = new Set([...localHosts].map(host => `http://${host}`))
   if (publicUrl) origins.add(publicUrl)
+  const localTickets = new Map()
   function loginPage(res) {
     const nonce = crypto.randomBytes(16).toString('base64')
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'` })
@@ -59,6 +61,16 @@ export function createAccess({ dir, port, publicUrl: configured }) {
       res.setHeader('x-frame-options', 'DENY')
       const proxied = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'tailscale-user-login'].some(name => req.headers[name] !== undefined)
       const local = !proxied && localAddress(req.socket.remoteAddress) && localHosts.has(req.headers.host)
+      const bearer = typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.slice(7) : ''
+      if (url.pathname === '/api/access/local-ticket' && req.method === 'POST') {
+        if (!local || req.headers.origin !== undefined || !equal(bearer, key)) { respond(res, 403, { error: 'Acceso rechazado' }); return false }
+        for (const [code, expires] of localTickets) if (expires <= Date.now()) localTickets.delete(code)
+        while (localTickets.size >= 16) localTickets.delete(localTickets.keys().next().value)
+        const code = crypto.randomBytes(32).toString('hex')
+        localTickets.set(code, Date.now() + 60000)
+        respond(res, 200, { code, expiresIn: 60 })
+        return false
+      }
       if (url.pathname === '/api/access/login' && req.method === 'POST') {
         if (!origins.has(req.headers.origin ?? '')) { respond(res, 403, { error: 'Acceso rechazado' }); return false }
         void (async () => {
@@ -66,7 +78,9 @@ export function createAccess({ dir, port, publicUrl: configured }) {
             let raw = ''
             for await (const chunk of req) { raw += chunk; if (Buffer.byteLength(raw) > 2048) throw new Error('Código demasiado largo') }
             const body = JSON.parse(raw)
-            if (!equal(body?.code, key)) return respond(res, 403, { error: 'Código incorrecto' })
+            const ticket = typeof body?.code === 'string' && local && (localTickets.get(body.code) ?? 0) > Date.now()
+            if (!equal(body?.code, key) && !ticket) return respond(res, 403, { error: 'Código incorrecto' })
+            if (ticket) localTickets.delete(body.code)
             res.setHeader('set-cookie', `hq_access=${key}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000${!local ? '; Secure' : ''}`)
             respond(res, 200, { ok: true })
           } catch { respond(res, 400, { error: 'Código inválido' }) }
@@ -74,8 +88,10 @@ export function createAccess({ dir, port, publicUrl: configured }) {
         return false
       }
       const cookie = String(req.headers.cookie ?? '').split(';').map(v => v.trim()).find(v => v.startsWith('hq_access='))?.slice(10)
-      const bearer = typeof req.headers.authorization === 'string' && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.slice(7) : ''
-      if (local || equal(cookie, key) || equal(bearer, key)) return true
+      // A loopback socket does not identify its user. Only the readiness probe
+      // is public locally; sessions, state and commands always require a key.
+      if (local && url.pathname === '/api/health' && req.method === 'GET') return true
+      if (equal(cookie, key) || equal(bearer, key)) return true
       if (url.pathname.startsWith('/api/')) respond(res, 401, { error: 'Abre el enlace privado de tu computadora para conectarte.' })
       else loginPage(res)
       return false

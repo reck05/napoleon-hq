@@ -9,6 +9,7 @@ import { AssistantBridge } from './assistant-bridge.mjs'
 import { DeviceManager } from './devices.mjs'
 import { createAccess } from './access.mjs'
 import { protect } from './secure.mjs'
+import { readRemoteJSON, readRemoteEvents } from './remote-response.mjs'
 
 const PORT = Number(process.env.PORT ?? 4517)
 const ENGINE = process.argv.includes('--engine=claude') ? 'claude' : (process.env.NAPOLEON_ENGINE ?? 'codex')
@@ -21,7 +22,7 @@ const REPLIES = path.join(DIR, 'replies')
 const DIST = path.join(ROOT, 'dist')
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' }
 const TOKEN = crypto.randomBytes(24).toString('hex')
-fs.mkdirSync(DIR, { recursive: true })
+fs.mkdirSync(DIR, { recursive: true, mode: 0o700 })
 const access = createAccess({ dir: DIR, port: PORT })
 const HOSTS = access.hosts
 const ORIGINS = access.origins
@@ -102,7 +103,11 @@ async function deviceAction(req, res, route) {
   if (!browserAuthorized(req)) return json(res, 403, { error: 'forbidden' })
   const body = await readBody(req)
   if (route === '/api/devices/pairing') return json(res, 200, { token: devices.key, label: devices.label })
-  if (route === '/api/devices/pair') return json(res, 200, await devices.pair(body))
+  if (route === '/api/devices/pair') {
+    const result = await devices.pair(body)
+    if (result.device.id === devices.data.selectedId) closeStreams()
+    return json(res, 200, result)
+  }
   const result = route === '/api/devices/select' ? devices.select(body.id) : devices.remove(body.id)
   closeStreams()
   return json(res, 200, result)
@@ -120,29 +125,25 @@ async function proxyDevice(req, res, url, device) {
     const body = message ? JSON.stringify(message) : undefined
     const response = await devices.request(device, url.pathname + url.search, { method: req.method, body, signal: controller.signal })
     if (events && response.ok) {
+      if (!response.headers.get('content-type')?.startsWith('text/event-stream')) throw new Error('Respuesta de eventos inválida')
       clearTimeout(timer)
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
-      const decoder = new TextDecoder()
-      let pending = ''
-      for await (const chunk of response.body) {
-        pending += decoder.decode(chunk, { stream: true })
-        let end
-        while ((end = pending.indexOf('\n\n')) !== -1) {
-          let event = pending.slice(0, end)
-          pending = pending.slice(end + 2)
-          if (event.startsWith('event: connection\n')) {
-            const data = JSON.parse(event.slice('event: connection\ndata: '.length))
-            event = `event: connection\ndata: ${JSON.stringify({ ...data, deviceId: device.id, deviceLabel: device.label })}`
-          }
-          if (!res.write(event + '\n\n')) await new Promise(resolve => {
-            const done = () => { res.off('drain', done); res.off('close', done); resolve() }
-            res.once('drain', done); res.once('close', done)
-          })
+      for await (let event of readRemoteEvents(response, { controller })) {
+        if (event.startsWith('event: connection\n')) {
+          const data = JSON.parse(event.slice('event: connection\ndata: '.length))
+          event = `event: connection\ndata: ${JSON.stringify({ ...data, deviceId: device.id, deviceLabel: device.label })}`
         }
+        if (!res.write(event + '\n\n')) await new Promise(resolve => {
+          const done = () => { res.off('drain', done); res.off('close', done); controller.signal.removeEventListener('abort', done); resolve() }
+          if (res.destroyed || res.writableEnded || controller.signal.aborted) return resolve()
+          res.once('drain', done); res.once('close', done)
+          controller.signal.addEventListener('abort', done, { once: true })
+        })
+        if (res.destroyed || res.writableEnded || controller.signal.aborted) break
       }
       return res.end()
     }
-    const result = await response.json()
+    const result = await readRemoteJSON(response)
     if (url.pathname === '/api/connection' && response.ok) return json(res, response.status, { ...result, deviceId: device.id, deviceLabel: device.label })
     return json(res, response.status, result)
   } catch {
@@ -151,13 +152,14 @@ async function proxyDevice(req, res, url, device) {
     return json(res, 503, { error: `${device.label} está sin conexión. Enciende el equipo o activa el despertar automático; no se enviará el objetivo a otra computadora.`, deviceId: device.id, offline: true })
   } finally {
     clearTimeout(timer)
+    controller.abort()
     routedStreams.delete(controller)
   }
 }
 async function peer(req, res, url) {
   if (ENGINE !== 'claude') return json(res, 409, { error: 'El puente ask_claude requiere Napoleon HQ en modo Claude (--engine=claude).' })
   if (req.headers.origin && !ORIGINS.has(req.headers.origin)) return json(res, 403, { error: 'forbidden' })
-  if (req.headers['x-peer-key'] !== peerKey) return json(res, 403, { error: 'clave de peer inválida' })
+  if (!peerAuthenticated(req, url)) return json(res, 403, { error: 'clave de peer inválida' })
   if (url.pathname === '/api/peer/ask' && req.method === 'POST') {
     const msg = await readBody(req)
     const from = clean(msg.from, 60) || 'peer'
@@ -193,13 +195,20 @@ async function peer(req, res, url) {
   return json(res, 404, { error: 'not found' })
 }
 
+function peerAuthenticated(req, url) {
+  const key = req.headers['x-peer-key']
+  return ENGINE === 'claude' && url.pathname.startsWith('/api/peer/') && typeof key === 'string'
+    && Buffer.byteLength(key) === Buffer.byteLength(peerKey)
+    && crypto.timingSafeEqual(Buffer.from(key), Buffer.from(peerKey))
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     if (!HOSTS.has(req.headers.host ?? '')) return json(res, 421, { error: 'wrong host' })
     const url = new URL(req.url ?? '/', 'http://x')
     const deviceAuthenticated = devices.authenticated(req)
     if (req.headers['x-device-key'] && !deviceAuthenticated) return json(res, 403, { error: 'clave de computadora inválida' })
-    if (!deviceAuthenticated && !access.authorize(req, res, url)) return
+    if (!deviceAuthenticated && !peerAuthenticated(req, url) && !access.authorize(req, res, url)) return
     if (url.pathname === '/api/session' && req.method === 'GET') return json(res, 200, { token: TOKEN })
     if (url.pathname === '/api/device/info' && req.method === 'GET') return deviceAuthenticated ? json(res, 200, devices.info()) : json(res, 403, { error: 'clave de computadora requerida' })
     if (url.pathname === '/api/devices' && req.method === 'GET') return json(res, 200, await devices.list())
@@ -213,7 +222,7 @@ const server = http.createServer(async (req, res) => {
     const routedGet = ['/api/projects', '/api/connection', '/api/events'].includes(url.pathname) && req.method === 'GET'
     const routedPost = ['/api/send', '/api/project/select', '/api/engine/select', '/api/interrupt', '/api/respond'].includes(url.pathname) && req.method === 'POST'
     if (selected && (routedGet || routedPost)) return await proxyDevice(req, res, url, selected)
-    if (url.pathname === '/api/health') return json(res, 200, { ok: true, engine: ENGINE })
+    if (url.pathname === '/api/health' && req.method === 'GET') return json(res, 200, { ok: true, engine: ENGINE })
     if (url.pathname === '/api/projects') return json(res, 200, { projects: bridge?.projects() ?? [] })
     if (url.pathname === '/api/connection') return json(res, 200, connection())
     if (url.pathname.startsWith('/api/peer/')) return await peer(req, res, url)

@@ -24,10 +24,16 @@ function fixture(t) {
 test('a project receives coordinator instructions and resumes its own durable session', async t => {
   const { dir, bridge, calls } = fixture(t)
   await bridge.select('project')
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(dir).mode & 0o777, 0o700)
+    assert.equal(fs.statSync(path.join(dir, 'bridge.json')).mode & 0o777, 0o600)
+    fs.chmodSync(path.join(dir, 'bridge.json'), 0o644)
+  }
   assert.match(calls[0].params.developerInstructions, /observable success/)
   assert.equal(calls[0].params.cwd, dir)
   assert.equal(calls[0].params.approvalPolicy, 'on-request')
   const resumed = new CodexBridge({ dir, root: dir })
+  if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, 'bridge.json')).mode & 0o777, 0o600)
   resumed.connected = resumed.authenticated = true
   resumed.rpc = bridge.rpc
   await resumed.select('project')

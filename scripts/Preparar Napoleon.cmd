@@ -36,6 +36,10 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-start "" "http://localhost:4517/"
+node scripts/mobile-setup.mjs open
+if errorlevel 1 (
+  pause
+  exit /b 1
+)
 echo Napoleon esta preparado. Su direccion privada se activara cuando entres en Tailscale.
 pause

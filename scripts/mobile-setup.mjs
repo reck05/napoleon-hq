@@ -11,6 +11,56 @@ export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const LABEL = 'com.napoleon.hq'
 const BUNDLED_CODEX = '/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex'
 export const dataDir = () => process.env.NAPOLEON_DIR || path.join(os.homedir(), '.codex', 'napoleon')
+export async function requestLocalTicket({ dir = dataDir(), port = 4517, fetcher = fetch } = {}) {
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Puerto local inválido (1024–65535)')
+  const keyFile = path.join(dir, 'access.key')
+  let key
+  try { key = fs.readFileSync(keyFile, 'utf8').trim() } catch { throw new Error('Napoleon todavía no ha creado su acceso local. Espera a que el servicio esté preparado.') }
+  if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('La clave de acceso local no es válida; no he abierto el navegador.')
+  if (process.platform !== 'win32') { fs.chmodSync(dir, 0o700); fs.chmodSync(keyFile, 0o600) }
+  try {
+    const response = await fetcher(`http://127.0.0.1:${port}/api/access/local-ticket`, {
+      method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: '{}', redirect: 'error', signal: AbortSignal.timeout(3000),
+    })
+    if (!response.ok) throw new Error('ticket rejected')
+    const ticket = await response.json()
+    if (!ticket || typeof ticket.code !== 'string' || !/^[a-f0-9]{64}$/.test(ticket.code) || ticket.code === key || !Number.isInteger(ticket.expiresIn) || ticket.expiresIn < 1 || ticket.expiresIn > 60) throw new Error('invalid ticket')
+    return { code: ticket.code, expiresIn: ticket.expiresIn }
+  } catch { throw new Error('No se pudo preparar un acceso temporal a Napoleon. No he abierto el navegador ni mostrado tu clave.') }
+}
+export function localLaunch({ code, port = 4517, platform = process.platform } = {}) {
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Puerto local inválido (1024–65535)')
+  if (typeof code !== 'string' || !/^[a-f0-9]{64}$/.test(code)) throw new Error('El código temporal de acceso no es válido; no he abierto el navegador.')
+  const url = `http://localhost:${port}/#access=${code}`
+  if (platform === 'darwin') return { command: '/usr/bin/open', args: [url] }
+  if (platform === 'win32') return { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', url] }
+  if (platform === 'linux') return { command: 'xdg-open', args: [url] }
+  throw new Error('No conozco el abridor de navegador de este sistema.')
+}
+export async function openLocalApp({ dir = dataDir(), port = 4517, platform = process.platform, probe = health, launch = spawn, getTicket = requestLocalTicket } = {}) {
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Puerto local inválido (1024–65535)')
+  const until = Date.now() + 5000
+  let ready = false
+  do {
+    const result = await probe(port, Math.max(1, Math.min(500, until - Date.now())))
+    if (result.ok) { ready = true; break }
+    const remaining = until - Date.now()
+    if (remaining > 0) await new Promise(resolve => setTimeout(resolve, Math.min(200, remaining)))
+  } while (Date.now() < until)
+  if (!ready) throw new Error('Napoleon no está listo. Vuelve a abrir el preparador para iniciar el servicio.')
+  let ticket
+  try { ticket = await getTicket({ dir, port }) }
+  catch { throw new Error('No se pudo preparar un acceso temporal a Napoleon. No he mostrado tu clave.') }
+  const { command, args } = localLaunch({ code: ticket?.code, port, platform })
+  await new Promise((resolve, reject) => {
+    let child
+    try { child = launch(command, args, { shell: false, stdio: 'ignore' }) }
+    catch { reject(new Error('No se pudo abrir Napoleon en el navegador. No he mostrado tu código de acceso.')); return }
+    child.once('error', () => reject(new Error('No se pudo abrir Napoleon en el navegador. No he mostrado tu código de acceso.')))
+    child.once('exit', code => code === 0 ? resolve() : reject(new Error('El navegador no pudo abrir Napoleon. Vuelve a intentarlo.')))
+  })
+}
 const configPath = () => path.join(dataDir(), 'setup.json')
 const mobilePath = () => path.join(dataDir(), 'mobile.json')
 const mobileStatusPath = () => path.join(dataDir(), 'mobile-status.json')
@@ -137,8 +187,8 @@ function checked(command, args, extra) {
   if (result.error || result.status !== 0) throw new Error((result.stderr || result.stdout || result.error?.message || 'Error de comando').trim())
   return result.stdout.trim()
 }
-async function health(port) {
-  try { const response = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(2500) }); return response.ok ? await response.json() : { ok: false, status: response.status } } catch { return { ok: false } }
+async function health(port, timeout = 2500) {
+  try { const response = await fetch(`http://127.0.0.1:${port}/api/health`, { signal: AbortSignal.timeout(timeout), redirect: 'error' }); return response.ok ? await response.json() : { ok: false, status: response.status } } catch { return { ok: false } }
 }
 function initProjects() {
   const file = path.join(dataDir(), 'projects.json')
@@ -165,6 +215,7 @@ export async function main(args = process.argv.slice(2)) {
   const option = name => { const index = args.indexOf(name); if (index !== -1 && (!args[index + 1] || args[index + 1].startsWith('--'))) throw new Error(`Falta un valor para ${name}`); return index === -1 ? undefined : args[index + 1] }
   if (option('--dir')) process.env.NAPOLEON_DIR = option('--dir')
   const config = readConfig()
+  if (action === 'open') { await openLocalApp({ port: config.port ?? 4517 }); console.log('Napoleon abierto con acceso privado.'); return }
   if (action === 'ensure-codex') { await ensureCodex(args.includes('--login')); return }
   if (action === 'status') {
     const codex = findExecutable('codex')
@@ -276,6 +327,6 @@ export async function main(args = process.argv.slice(2)) {
     console.log('Inicio automático eliminado.'); return
   }
   if (action === 'serve') { await configureServe(config, tailState()); return }
-  throw new Error('Comandos: setup, ensure-codex [--login], status, configure [--public-url URL] [--allow-sleep], serve, autostart [--dry-run], start, remove-autostart')
+  throw new Error('Comandos: setup, ensure-codex [--login], status, open, configure [--public-url URL] [--allow-sleep], serve, autostart [--dry-run], start, remove-autostart')
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main().catch(error => { console.error(error.message); process.exitCode = 1 })

@@ -34,15 +34,18 @@ test('Claude compatibility: browser orders, MCP peers, replies and access checks
     child.stdout.once('data', () => { clearTimeout(timer); resolve() })
     child.once('error', e => { clearTimeout(timer); reject(e) })
   })
-  const token = (await (await fetch(base)).text()).match(/name="hq-token" content="([^"]+)"/)[1]
+  const accessKey = fs.readFileSync(path.join(dir, 'access.key'), 'utf8').trim()
+  const authHeaders = { authorization: 'Bearer ' + accessKey }
+  const get = route => fetch(base + route, { headers: authHeaders })
+  const token = (await (await get('/')).text()).match(/name="hq-token" content="([^"]+)"/)[1]
   const peerKey = fs.readFileSync(path.join(dir, 'peer.key'), 'utf8').trim()
-  const pageHeaders = { 'content-type': 'application/json', origin: base, 'x-hq-token': token }
+  const pageHeaders = { ...authHeaders, 'content-type': 'application/json', origin: base, 'x-hq-token': token }
   const peerHeaders = { 'content-type': 'application/json', 'x-peer-key': peerKey }
 
   await t.test('explicit Claude mode leaves Codex sessions untouched', async () => {
     assert.equal((await (await fetch(base + '/api/health')).json()).engine, 'claude')
-    assert.equal((await (await fetch(base + '/api/connection')).json()).engine, 'claude')
-    assert.deepEqual((await (await fetch(base + '/api/projects')).json()).projects, [])
+    assert.equal((await (await get('/api/connection')).json()).engine, 'claude')
+    assert.deepEqual((await (await get('/api/projects')).json()).projects, [])
     assert.equal(fs.existsSync(path.join(dir, 'bridge.json')), false)
   })
   await t.test('browser orders use the legacy outbox and keep increasing sequence IDs', async () => {
@@ -83,7 +86,10 @@ test('Claude compatibility: browser orders, MCP peers, replies and access checks
     } finally { await client.close() }
   })
   await t.test('invalid keys, origins and hosts cannot submit orders', async () => {
-    assert.equal((await fetch(base + '/api/peer/status')).status, 403)
+    assert.equal((await fetch(base + '/api/peer/status')).status, 401)
+    assert.equal((await fetch(base + '/api/session')).status, 401)
+    assert.equal((await fetch(base + '/api/session', { headers: peerHeaders })).status, 401)
+    assert.equal((await fetch(base + '/api/send', { method: 'POST', headers: { origin: base, 'x-hq-token': token }, body: '{}' })).status, 401)
     assert.equal((await fetch(base + '/api/send', { method: 'POST', headers: { ...pageHeaders, origin: 'https://untrusted.example' }, body: '{}' })).status, 403)
     assert.equal((await fetch(base + '/api/peer/ask', { method: 'POST', headers: { ...peerHeaders, origin: 'https://untrusted.example' }, body: '{}' })).status, 403)
     const hostStatus = await new Promise((resolve, reject) => {

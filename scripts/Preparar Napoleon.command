@@ -20,7 +20,7 @@ node scripts/mobile-setup.mjs ensure-codex --login || exit 1
 node scripts/mobile-setup.mjs setup
 napoleon_setup_result=$?
 if [ "$napoleon_setup_result" -eq 0 ]; then
-  open 'http://localhost:4517/'
+  node scripts/mobile-setup.mjs open || exit 1
   echo 'Napoleon está preparado. Entra en Tailscale; la dirección del teléfono se activará automáticamente.'
 fi
 read -r -p 'Pulsa Enter para cerrar. ' _napoleon_reply
