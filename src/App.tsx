@@ -158,12 +158,13 @@ function Graph({ state, selected, filter, onSelect, fitRef, focusRef }: GraphPro
 }
 
 export default function App() {
+  const [phoneView] = useState(() => !new URLSearchParams(location.search).has('demo') && (new URLSearchParams(location.search).has('phone') || window.matchMedia('(max-width: 600px)').matches))
   const [mode, setMode] = useState<Mode>(() => (new URLSearchParams(location.search).has('demo') ? 'demo' : 'live'))
   const [isTimelineOn, setTimeline] = useState(() => store.get('hq.timeline') === '1')
   const [filter, setFilter] = useState<string>()
   const [selected, setSelected] = useState<string>()
   const [isPaletteOpen, setPalette] = useState(false)
-  const [isProjectsOpen, setProjectsOpen] = useState(() => !new URLSearchParams(location.search).has('demo'))
+  const [isProjectsOpen, setProjectsOpen] = useState(() => !phoneView && !new URLSearchParams(location.search).has('demo'))
   const [isDevicesOpen, setDevicesOpen] = useState(false)
   const [deviceRevision, setDeviceRevision] = useState(0)
   const [deviceName, setDeviceName] = useState('')
@@ -174,6 +175,13 @@ export default function App() {
   const view = state ?? EMPTY
   const deviceKey = `${deviceRevision}:${connection?.deviceId ?? 'local'}`
   const lastDeviceId = useRef<string | undefined>(undefined)
+  const phoneOpened = useRef(false)
+  useEffect(() => {
+    if (!phoneView || phoneOpened.current || !connection?.connected || !connection.authenticated) return
+    phoneOpened.current = true
+    if (connection.activeProjectId) setSelected(NAPOLEON)
+    else setProjectsOpen(true)
+  }, [phoneView, connection?.connected, connection?.authenticated, connection?.activeProjectId])
   useEffect(() => {
     if (!connection?.deviceId) return
     if (lastDeviceId.current && lastDeviceId.current !== connection.deviceId) {

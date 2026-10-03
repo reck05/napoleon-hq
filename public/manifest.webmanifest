@@ -4,7 +4,7 @@
   "description": "Coordina Codex y tus computadoras desde el teléfono",
   "id": "/",
   "scope": "/",
-  "start_url": "/",
+  "start_url": "/?phone",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",

@@ -103,6 +103,7 @@ export function Devices({ onClose, onSelected, installation }: { onClose: () => 
     {needsLogin && <p><a className="project-open" href="/">Volver a conectar con Napoleon →</a></p>}
     {tab === 'computers' ? <>
       <p className="projects-intro">Elige dónde trabajará Codex. Desde el teléfono puedes cambiar de computadora y ver sus proyectos, tareas y resultados.</p>
+      {catalog && <p className="device-catalog-note" role="status">{catalog.devices.length === 1 ? 'Tienes 1 computadora añadida. Para manejar las dos desde aquí, prepara y conecta la segunda abajo.' : `Tienes ${catalog.devices.length} computadoras añadidas. Pulsa «Usar esta» para elegir dónde trabajará Napoleon.`}</p>}
       <ul className="device-list">
         {catalog?.devices.map(device => <li key={device.id}>
           <div className="device-info"><strong>{device.label}</strong><span className={`device-status ${device.online ? 'is-online' : ''}`}><i className="dot" />{device.online ? 'En línea' : 'No disponible'}{catalog.selectedId === device.id ? ' · seleccionada' : ''}</span><span className="project-path">{device.isLocal ? 'Esta computadora' : device.url}</span>{!device.online && device.error && <span className="project-note">Comprueba que tiene conexión y Napoleon está abierto.</span>}</div>
@@ -111,7 +112,8 @@ export function Devices({ onClose, onSelected, installation }: { onClose: () => 
       </ul>
       {!catalog && !error && <p className="faint">Buscando tus computadoras…</p>}
       <details className="device-section"><summary>Conectar mi segunda computadora</summary>
-        <p className="project-note">Abre Napoleon en la segunda computadora. En «Computadoras», pulsa «Mostrar código de esta computadora». Copia su dirección privada y su código aquí.</p>
+        <a className="device-secondary device-download" href="https://github.com/reck05/napoleon-hq/archive/refs/heads/main.zip" target="_blank" rel="noreferrer">Descargar preparador para segunda computadora ↗</a>
+        <ol className="device-setup-steps"><li><strong>Prepara la segunda computadora.</strong> Abre este enlace en ella y descomprime la descarga. Dentro de la carpeta «scripts», haz doble clic en «Preparar Napoleon.command» si es Mac o «Preparar Napoleon.cmd» si es Windows. Si se abre una página para instalar una aplicación o iniciar sesión, completa los pasos. Entra en Tailscale con la misma cuenta.</li><li><strong>Copia su dirección y código.</strong> En Napoleon de la segunda computadora, abre «Computadoras» → «Mostrar código de esta computadora». Pulsa «Mostrar mi código» y copia el código y la dirección privada.</li><li><strong>Añádela a este panel.</strong> Pega la dirección y el código debajo y pulsa «Conectar computadora». Después podrás elegir cualquiera de las dos desde el teléfono.</li></ol>
         <form className="device-form" onSubmit={e => { e.preventDefault(); void action('pair', async () => { await post('/api/devices/pair', { url: url.trim(), token: token.trim(), label: label.trim() }); setToken(''); setUrl(''); setLabel(''); await refresh() }) }}>
           <label>Nombre<input value={label} onChange={e => setLabel(e.target.value)} placeholder="Por ejemplo: computadora de casa" maxLength={100} /></label>
           <label>Dirección de Napoleon<input required type="url" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://tu-computadora…ts.net" autoCapitalize="none" autoCorrect="off" /></label>
@@ -123,6 +125,7 @@ export function Devices({ onClose, onSelected, installation }: { onClose: () => 
         <p className="project-note">Úsalo solo para conectar tus propias computadoras. Quien tenga este código puede acceder a Napoleon.</p>
         {pairing ? <div className="pairing-details"><strong>{pairing.label}</strong><code>{pairing.token}</code><button className="txt is-on" disabled={!!busy} onClick={() => void copy(pairing.token, 'pairing')}>{copied === 'pairing' ? 'Código copiado' : 'Copiar código'}</button>{mobile?.url && <><span className="project-path">{mobile.url}</span><button className="txt is-on" disabled={!!busy} onClick={() => void copy(mobile.url!, 'address')}>{copied === 'address' ? 'Dirección copiada' : 'Copiar dirección privada'}</button></>}</div> : <button className="device-secondary" disabled={!!busy} onClick={() => void action('pairing', async () => setPairing(await post('/api/devices/pairing')))}>Mostrar mi código</button>}
       </details>
+      <p className="project-note">Para empezar a trabajar, elige la computadora y el proyecto. Escribe tu objetivo en la barra de arriba; Napoleon coordinará los agentes y mostrará aquí los resultados.</p>
       <p className="project-note device-power-note">Napoleon necesita una computadora encendida para trabajar. El arranque automático mantiene el servicio disponible al iniciar el equipo; una computadora apagada no podrá ejecutar tareas.</p>
     </> : <>
       <p className="projects-intro">Lleva este panel en la pantalla de inicio y da instrucciones a Codex desde donde estés.</p>
