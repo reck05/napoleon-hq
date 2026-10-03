@@ -5,7 +5,7 @@ import { parentOf } from './layout'
 import { clockOf, fmtDur, fmtTokens, statusLabel, useNow } from './util'
 import { NAPOLEON, type Agent, type HQState, type LogEntry, type Usage } from './types'
 
-type Props = { state: HQState; id: string; isDemo: boolean; onClose: () => void; onSelect: (id: string) => void }
+type Props = { state: HQState; id: string; isDemo: boolean; deviceId?: string; connected: boolean; onClose: () => void; onSelect: (id: string) => void }
 
 const tokens = (u?: Usage) => (u ? `${fmtTokens(u.input)} / ${fmtTokens(u.output)}` : '—')
 
@@ -24,7 +24,7 @@ function Log({ log, from }: { log: LogEntry[]; from: number }) {
   )
 }
 
-export function Inspector({ state, id, isDemo, onClose, onSelect }: Props) {
+export function Inspector({ state, id, isDemo, deviceId, connected, onClose, onSelect }: Props) {
   const now = useNow(1000)
   const ids = new Set(state.agents.map(a => a.id))
   const isRoot = id === NAPOLEON
@@ -96,6 +96,8 @@ export function Inspector({ state, id, isDemo, onClose, onSelect }: Props) {
           answer={!isRoot && a!.answer && !a!.convo?.some(m => m.text === a!.answer) ? { t: a!.endedAt ?? now, text: a!.answer } : undefined}
           isLive={isRoot || a!.status === 'running'}
           isDemo={isDemo}
+          deviceId={deviceId}
+          connected={connected}
         />}
 
         {!isRoot && (

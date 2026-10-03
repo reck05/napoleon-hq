@@ -6,13 +6,14 @@ export type Mode = 'live' | 'demo'
 export type Link = 'connecting' | 'live' | 'offline'
 
 /** The HQ state: streamed from the mod over SSE, or the scripted demo. */
-export function useHQ(mode: Mode) {
+export function useHQ(mode: Mode, deviceRevision = 0) {
   const [state, setState] = useState<HQState | null>(null)
   const [link, setLink] = useState<Link>('connecting')
   const [connection, setConnection] = useState<Connection | null>(null)
 
   useEffect(() => {
     setState(null)
+    setConnection(null)
     if (mode === 'demo') {
       const t0 = Date.now()
       const id = setInterval(() => setState(demoState(t0, Date.now())), 120)
@@ -30,9 +31,9 @@ export function useHQ(mode: Mode) {
       } catch { /* a torn frame; the next one is whole */ }
     })
     es.onopen = () => setLink('live')
-    es.onerror = () => setLink('offline')
+    es.onerror = () => { setLink('offline'); setConnection(c => c ? { ...c, connected: false } : c) }
     return () => es.close()
-  }, [mode])
+  }, [mode, deviceRevision])
 
   return { state, link, connection }
 }

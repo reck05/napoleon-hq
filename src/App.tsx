@@ -10,6 +10,7 @@ import { Palette } from './Palette'
 import { CampaignBar, Projects, Requests } from './Projects'
 import { Timeline } from './Timeline'
 import { TopBar } from './TopBar'
+import { Devices, useInstallApp, type DeviceCatalog } from './Devices'
 import { useHQ, usePulses, type Mode } from './useHQ'
 import { store } from './util'
 import { NAPOLEON, type HQState } from './types'
@@ -163,16 +164,40 @@ export default function App() {
   const [selected, setSelected] = useState<string>()
   const [isPaletteOpen, setPalette] = useState(false)
   const [isProjectsOpen, setProjectsOpen] = useState(() => !new URLSearchParams(location.search).has('demo'))
+  const [isDevicesOpen, setDevicesOpen] = useState(false)
+  const [deviceRevision, setDeviceRevision] = useState(0)
+  const [deviceName, setDeviceName] = useState('')
+  const installation = useInstallApp()
   const fitRef = useRef<() => void>(() => undefined)
   const focusRef = useRef<(id: string) => void>(() => undefined)
-  const { state, link, connection } = useHQ(mode)
+  const { state, link, connection } = useHQ(mode, deviceRevision)
   const view = state ?? EMPTY
+  const deviceKey = `${deviceRevision}:${connection?.deviceId ?? 'local'}`
+  const lastDeviceId = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    if (!connection?.deviceId) return
+    if (lastDeviceId.current && lastDeviceId.current !== connection.deviceId) {
+      setSelected(undefined)
+      setFilter(undefined)
+    }
+    lastDeviceId.current = connection.deviceId
+  }, [connection?.deviceId])
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetch('/api/devices', { signal: controller.signal }).then(async r => {
+      if (!r.ok) return
+      const result: DeviceCatalog = await r.json()
+      setDeviceName(result.devices.find(device => device.id === result.selectedId)?.label ?? '')
+    }).catch(() => { /* The connection status already reports unreachable computers. */ })
+    return () => controller.abort()
+  }, [deviceRevision])
 
   const toggleMode = useCallback(() => { setSelected(undefined); setMode(m => (m === 'demo' ? 'live' : 'demo')) }, [])
   const toggleTimeline = useCallback(() => setTimeline(v => (store.set('hq.timeline', v ? '0' : '1'), !v)), [])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isDevicesOpen || isProjectsOpen) return
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(v => !v); return }
       if (isPaletteOpen || (e.target as HTMLElement).closest('input, textarea')) return
       const k = e.key.toLowerCase()
@@ -183,7 +208,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isPaletteOpen, toggleMode, toggleTimeline])
+  }, [isPaletteOpen, isDevicesOpen, isProjectsOpen, toggleMode, toggleTimeline])
 
   const displayAgents = useMemo(() => [...peerAgents(view), ...view.agents], [view])
   const counts = useMemo(() => new Map(AREAS.map(a => [a.key, displayAgents.filter(x => x.areaKey === a.key).length])), [displayAgents])
@@ -191,8 +216,8 @@ export default function App() {
   return (
     <ReactFlowProvider>
       <div className="app">
-        <TopBar state={state} mode={mode} link={link} isTimelineOn={isTimelineOn} onMode={toggleMode} onTimeline={toggleTimeline} onPalette={() => setPalette(true)} projectsEnabled={connection?.engine !== 'claude'} onProjects={() => { setMode('live'); setProjectsOpen(true) }} />
-        {mode === 'live' && connection?.engine !== 'claude' ? <CampaignBar connection={connection} onProjects={() => setProjectsOpen(true)} onConversation={() => setSelected(NAPOLEON)} /> : <div />}
+        <TopBar state={state} mode={mode} link={link} isTimelineOn={isTimelineOn} onMode={toggleMode} onTimeline={toggleTimeline} onPalette={() => setPalette(true)} projectsEnabled={connection?.engine !== 'claude'} onProjects={() => { setMode('live'); setProjectsOpen(true) }} onDevices={() => { setProjectsOpen(false); setDevicesOpen(true) }} deviceName={connection?.deviceLabel ?? deviceName} />
+        {mode === 'live' && connection?.engine !== 'claude' ? <CampaignBar key={deviceKey} connection={connection} onProjects={() => setProjectsOpen(true)} onConversation={() => setSelected(NAPOLEON)} /> : <div />}
         <main className="stage">
           <Graph state={view} selected={selected} filter={filter} onSelect={setSelected} fitRef={fitRef} focusRef={focusRef} />
 
@@ -213,11 +238,12 @@ export default function App() {
           </AnimatePresence>
 
           <AnimatePresence>
-            {selected && <Inspector state={{ ...view, agents: displayAgents }} id={selected} isDemo={mode === 'demo'} onClose={() => setSelected(undefined)} onSelect={id => { setSelected(id); focusRef.current(id) }} />}
+            {selected && <Inspector key={deviceKey} state={{ ...view, agents: displayAgents }} id={selected} isDemo={mode === 'demo'} deviceId={connection?.deviceId} connected={connection?.connected ?? false} onClose={() => setSelected(undefined)} onSelect={id => { setSelected(id); focusRef.current(id) }} />}
           </AnimatePresence>
         </main>
-        {isProjectsOpen && connection?.engine !== 'claude' && <Projects connection={connection} onClose={() => setProjectsOpen(false)} onSelected={() => { setProjectsOpen(false); setSelected(NAPOLEON) }} />}
-        <Requests connection={connection} />
+        {isProjectsOpen && connection?.engine !== 'claude' && <Projects key={deviceKey} connection={connection} onClose={() => setProjectsOpen(false)} onSelected={() => { setProjectsOpen(false); setSelected(NAPOLEON) }} />}
+        {isDevicesOpen && <Devices installation={installation} onClose={() => setDevicesOpen(false)} onSelected={() => { setSelected(undefined); setFilter(undefined); setMode('live'); setDeviceRevision(r => r + 1); setDevicesOpen(false); setProjectsOpen(true) }} />}
+        <Requests key={deviceKey} connection={connection} />
         <AnimatePresence initial={false}>
           {isTimelineOn && (
             <motion.footer className="dock" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>

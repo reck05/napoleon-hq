@@ -1,7 +1,9 @@
 {
   "name": "Napoleon HQ",
   "short_name": "Napoleon",
-  "description": "Cuartel general de agentes de Claude Code",
+  "description": "Coordina Codex y tus computadoras desde el teléfono",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",

@@ -6,6 +6,8 @@ import os from 'node:os'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { CodexBridge } from './codex-bridge.mjs'
+import { DeviceManager } from './devices.mjs'
+import { createAccess } from './access.mjs'
 
 const PORT = Number(process.env.PORT ?? 4517)
 const ENGINE = process.argv.includes('--engine=claude') ? 'claude' : (process.env.NAPOLEON_ENGINE ?? 'codex')
@@ -18,9 +20,11 @@ const REPLIES = path.join(DIR, 'replies')
 const DIST = path.join(ROOT, 'dist')
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json' }
 const TOKEN = crypto.randomBytes(24).toString('hex')
-const HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`])
-const ORIGINS = new Set([...HOSTS].map(h => `http://${h}`))
 fs.mkdirSync(DIR, { recursive: true })
+const access = createAccess({ dir: DIR, port: PORT })
+const HOSTS = access.hosts
+const ORIGINS = access.origins
+const devices = new DeviceManager({ dir: DIR, engine: ENGINE, port: PORT })
 let peerKey = ''
 if (ENGINE === 'claude') {
   fs.mkdirSync(REPLIES, { recursive: true })
@@ -31,6 +35,13 @@ if (ENGINE === 'claude') {
 }
 
 const clients = new Set()
+const routedStreams = new Set()
+const closeStreams = () => {
+  for (const res of clients) res.end()
+  clients.clear()
+  for (const controller of routedStreams) controller.abort()
+  routedStreams.clear()
+}
 let timer
 let seq = 0
 const bridge = ENGINE === 'codex' ? new CodexBridge({ dir: DIR, root: ROOT, onChange: () => broadcast() }) : null
@@ -38,7 +49,7 @@ const readState = () => {
   if (bridge) return JSON.stringify(bridge.state())
   try { return fs.readFileSync(STATE, 'utf8') } catch { return '' }
 }
-const connection = () => bridge ? bridge.connection() : { engine: 'claude', connected: !!readState(), authenticated: false, activeProjectId: null, projectName: null, busy: false, error: '', requests: [] }
+const connection = () => ({ ...(bridge ? bridge.connection() : { engine: 'claude', connected: !!readState(), authenticated: false, activeProjectId: null, projectName: null, busy: false, error: '', requests: [] }), deviceId: 'local', deviceLabel: devices.label })
 const broadcast = () => {
   if (!timer) timer = setTimeout(() => {
     timer = undefined
@@ -67,8 +78,9 @@ function queue(order) {
   return seq
 }
 async function send(req, res, route) {
-  if (!ORIGINS.has(req.headers.origin ?? '') || req.headers['x-hq-token'] !== TOKEN) return json(res, 403, { error: 'forbidden' })
+  if (!devices.authenticated(req) && !browserAuthorized(req)) return json(res, 403, { error: 'forbidden' })
   const msg = await readBody(req)
+  if (!devices.authenticated(req) && msg.deviceId && msg.deviceId !== devices.data.selectedId) return json(res, 409, { error: 'La computadora seleccionada cambió. Revisa el destino antes de enviar el objetivo.' })
   if (route !== '/api/send') {
     if (!bridge) return json(res, 409, { error: 'Esta acción requiere el modo Codex' })
     if (route === '/api/project/select') return json(res, 200, await bridge.select(msg.projectId))
@@ -79,6 +91,65 @@ async function send(req, res, route) {
   const text = clean(msg.text, 8000)
   if (!to || !text) return json(res, 400, { error: 'to and text are required' })
   return json(res, 200, bridge ? await bridge.send(to, text) : { ok: true, seq: queue({ to, text }) })
+}
+function browserAuthorized(req) {
+  return ORIGINS.has(req.headers.origin ?? '') && req.headers['x-hq-token'] === TOKEN
+}
+async function deviceAction(req, res, route) {
+  if (!browserAuthorized(req)) return json(res, 403, { error: 'forbidden' })
+  const body = await readBody(req)
+  if (route === '/api/devices/pairing') return json(res, 200, { token: devices.key, label: devices.label })
+  if (route === '/api/devices/pair') return json(res, 200, await devices.pair(body))
+  const result = route === '/api/devices/select' ? devices.select(body.id) : devices.remove(body.id)
+  closeStreams()
+  return json(res, 200, result)
+}
+async function proxyDevice(req, res, url, device) {
+  if (req.method === 'POST' && !browserAuthorized(req)) return json(res, 403, { error: 'forbidden' })
+  const events = url.pathname === '/api/events'
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), events ? 8000 : 60000)
+  res.on('close', () => controller.abort())
+  if (events) routedStreams.add(controller)
+  try {
+    const message = req.method === 'POST' ? await readBody(req) : undefined
+    if (message && (devices.data.selectedId !== device.id || (message.deviceId && message.deviceId !== device.id))) return json(res, 409, { error: 'La computadora seleccionada cambió. Revisa el destino antes de enviar el objetivo.' })
+    const body = message ? JSON.stringify(message) : undefined
+    const response = await devices.request(device, url.pathname + url.search, { method: req.method, body, signal: controller.signal })
+    if (events && response.ok) {
+      clearTimeout(timer)
+      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
+      const decoder = new TextDecoder()
+      let pending = ''
+      for await (const chunk of response.body) {
+        pending += decoder.decode(chunk, { stream: true })
+        let end
+        while ((end = pending.indexOf('\n\n')) !== -1) {
+          let event = pending.slice(0, end)
+          pending = pending.slice(end + 2)
+          if (event.startsWith('event: connection\n')) {
+            const data = JSON.parse(event.slice('event: connection\ndata: '.length))
+            event = `event: connection\ndata: ${JSON.stringify({ ...data, deviceId: device.id, deviceLabel: device.label })}`
+          }
+          if (!res.write(event + '\n\n')) await new Promise(resolve => {
+            const done = () => { res.off('drain', done); res.off('close', done); resolve() }
+            res.once('drain', done); res.once('close', done)
+          })
+        }
+      }
+      return res.end()
+    }
+    const result = await response.json()
+    if (url.pathname === '/api/connection' && response.ok) return json(res, response.status, { ...result, deviceId: device.id, deviceLabel: device.label })
+    return json(res, response.status, result)
+  } catch {
+    if (res.destroyed || res.writableEnded) return
+    if (res.headersSent) return res.end()
+    return json(res, 503, { error: `${device.label} está sin conexión. Enciende el equipo o activa el despertar automático; no se enviará el objetivo a otra computadora.`, deviceId: device.id, offline: true })
+  } finally {
+    clearTimeout(timer)
+    routedStreams.delete(controller)
+  }
 }
 async function peer(req, res, url) {
   if (ENGINE !== 'claude') return json(res, 409, { error: 'El puente ask_claude requiere Napoleon HQ en modo Claude (--engine=claude).' })
@@ -123,6 +194,22 @@ const server = http.createServer(async (req, res) => {
   try {
     if (!HOSTS.has(req.headers.host ?? '')) return json(res, 421, { error: 'wrong host' })
     const url = new URL(req.url ?? '/', 'http://x')
+    const deviceAuthenticated = devices.authenticated(req)
+    if (req.headers['x-device-key'] && !deviceAuthenticated) return json(res, 403, { error: 'clave de computadora inválida' })
+    if (!deviceAuthenticated && !access.authorize(req, res, url)) return
+    if (url.pathname === '/api/session' && req.method === 'GET') return json(res, 200, { token: TOKEN })
+    if (url.pathname === '/api/device/info' && req.method === 'GET') return deviceAuthenticated ? json(res, 200, devices.info()) : json(res, 403, { error: 'clave de computadora requerida' })
+    if (url.pathname === '/api/devices' && req.method === 'GET') return json(res, 200, await devices.list())
+    if (['/api/devices/pair', '/api/devices/select', '/api/devices/remove', '/api/devices/pairing'].includes(url.pathname) && req.method === 'POST') return await deviceAction(req, res, url.pathname)
+    if (url.pathname === '/api/mobile' && req.method === 'GET') return json(res, 200, access.info())
+    if (url.pathname === '/api/mobile/link' && req.method === 'POST') {
+      if (!browserAuthorized(req)) return json(res, 403, { error: 'forbidden' })
+      return json(res, 200, access.pairingLink())
+    }
+    const selected = !deviceAuthenticated && devices.selected()
+    const routedGet = ['/api/projects', '/api/connection', '/api/events'].includes(url.pathname) && req.method === 'GET'
+    const routedPost = ['/api/send', '/api/project/select', '/api/interrupt', '/api/respond'].includes(url.pathname) && req.method === 'POST'
+    if (selected && (routedGet || routedPost)) return await proxyDevice(req, res, url, selected)
     if (url.pathname === '/api/health') return json(res, 200, { ok: true, engine: ENGINE })
     if (url.pathname === '/api/projects') return json(res, 200, { projects: bridge?.projects() ?? [] })
     if (url.pathname === '/api/connection') return json(res, 200, connection())
@@ -157,7 +244,7 @@ server.listen(PORT, '127.0.0.1', () => {
 })
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
   bridge?.close(); watcher?.close(); clearInterval(heartbeat); clearTimeout(timer)
-  for (const res of clients) res.end()
+  closeStreams()
   server.close(() => process.exit(0))
   setTimeout(() => process.exit(0), 1500).unref()
 })

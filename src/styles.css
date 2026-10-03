@@ -223,3 +223,93 @@ button:disabled, input:disabled { opacity: 0.4; cursor: default; }
 .n-peer.n-live { border-color: var(--fg); }
 .n-peer .n-dot { background: var(--fg); }
 .b-peer .b-line { stroke-dasharray: 3 4; stroke: var(--g2); }
+
+/* computers and phone access */
+.device-list { list-style: none; padding: 0; margin: 0 0 20px; }
+.device-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--g4); }
+.device-info { min-width: 0; }
+.device-info strong { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.device-status { display: block; margin-top: 6px; color: var(--g1); font-size: 11px; }
+.device-status.is-online { color: var(--live); }
+.device-status.is-online .dot { background: var(--live); }
+.device-actions { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; gap: 12px; }
+.device-section { padding: 16px 0; border-top: 1px solid var(--g4); }
+.device-section summary { cursor: pointer; padding: 6px 0; font-size: 13px; }
+.device-form { display: grid; gap: 14px; margin-top: 18px; }
+.device-form label { display: grid; gap: 8px; color: var(--g1); }
+.device-form input { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--g3); border-radius: 7px; background: #000; color: var(--fg); font: 13px var(--sans); }
+.device-form button { justify-self: start; }
+.device-secondary { display: inline-flex; align-items: center; justify-content: center; padding: 11px 15px; border: 1px solid var(--g3); border-radius: 7px; margin-top: 10px; }
+.pairing-details { display: grid; gap: 12px; margin: 14px 0; }
+.pairing-details code { user-select: all; overflow-wrap: anywhere; padding: 12px; background: var(--g5); border: 1px solid var(--g3); border-radius: 7px; }
+.pairing-details button { justify-self: start; }
+.device-power-note { padding-top: 12px; border-top: 1px solid var(--g4); }
+.phone-steps { padding-left: 23px; margin: 16px 0 24px; }
+.phone-steps li { padding: 8px 0 20px 5px; }
+.phone-steps strong { font-weight: 500; font-size: 14px; }
+.phone-steps p { color: var(--g1); line-height: 1.7; }
+.phone-stores { display: flex; gap: 12px; }
+.phone-stores a, .phone-link > a { color: var(--fg); text-underline-offset: 3px; }
+.phone-stores a { padding: 10px 14px; border: 1px solid var(--g3); border-radius: 7px; }
+.phone-link { margin-top: 18px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.phone-link p { margin: 0; }
+.phone-qr { display: block; width: 256px; max-width: 100%; height: auto; border-radius: 10px; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--fg); outline-offset: 4px; }
+
+/* phone layout: safe areas, readable inputs and touch targets */
+@media (max-width: 600px) {
+  html, body, #root { height: 100dvh; }
+  .app { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .top { padding: 8px 12px; gap: 4px 12px; }
+  .top-l { width: 100%; justify-content: space-between; min-height: 30px; }
+  .top-r { width: 100%; margin: 0; gap: 4px; justify-content: space-between; }
+  .top-r > button { min-height: 44px; padding: 0 7px; font-size: 11px; }
+  .top-r > button:last-child { display: none; }
+  .top-c { font-size: 10px; gap: 8px; padding-top: 2px; }
+  .top-c > span:nth-child(n+4) { display: none; }
+  .campaign { padding: 10px 12px 12px; }
+  .campaign-context { gap: 4px 12px; margin-bottom: 6px; }
+  .campaign-context > button { min-height: 44px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+  .campaign-context > .faint { display: none; }
+  .campaign-form { gap: 8px; }
+  .campaign-form input, .project-search, .request-card input, .device-form input, .c-compose textarea { font-size: 16px; }
+  .campaign-send { min-height: 44px; padding: 11px 16px; }
+  .campaign-form > button.txt { padding: 10px 12px; min-height: 44px; }
+  .projects-dialog { width: calc(100% - 20px); max-height: calc(100dvh - 32px); padding: 20px 16px; margin: auto; }
+  .projects-head h2 { font-size: 27px; }
+  .projects-head > button { min-width: 44px; min-height: 44px; margin: -9px -8px 0 0; }
+  .projects-intro { margin-top: 0; margin-bottom: 18px; }
+  .projects-tabs { gap: 18px; }
+  .projects-tabs button { min-height: 44px; }
+  .project-open { min-height: 44px; display: inline-flex; align-items: center; }
+  .project-list li { gap: 4px 12px; padding: 12px 0; }
+  .device-list li { flex-wrap: wrap; gap: 8px; }
+  .device-info { width: 100%; }
+  .device-actions { flex-direction: row; align-items: center; gap: 20px; }
+  .device-actions button { min-height: 44px; }
+  .device-section summary { min-height: 44px; padding: 12px 0; }
+  .device-secondary, .pairing-details button { min-height: 44px; }
+  .insp { padding: 14px 16px 32px; }
+  .i-head > button { min-height: 44px; min-width: 44px; margin-top: -10px; }
+  .i-kids button, .c-more { min-height: 44px; }
+  .i-kids li { align-items: center; }
+  .c-actions { gap: 10px; flex-wrap: wrap; }
+  .c-actions button { min-height: 44px; padding: 4px; }
+  .requests { right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); width: calc(100% - 20px); max-height: 70dvh; }
+  .request-card { padding: 16px; }
+  .request-actions button, .request-options button { min-height: 44px; padding: 10px 12px; }
+  .legend { left: 12px; bottom: 10px; max-width: calc(100% - 24px); gap: 0 12px; }
+  .legend button { min-height: 44px; }
+  .follow { bottom: 58px; min-height: 44px; padding: 8px 14px; background: #080808; border: 1px solid var(--g3); border-radius: 7px; }
+  .empty { font-size: 12px; top: 60%; }
+  .pal { top: 10dvh; }
+  .pal [cmdk-item] { min-height: 44px; }
+  .pal [cmdk-input] { font-size: 16px; }
+}
+.device-switch span { display: block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 9px; margin-top: 3px; color: var(--g1); }
+@media (max-width: 600px) { .device-switch span { max-width: 95px; } }
+.mobile-setup-status { padding: 14px 16px; margin: 0 0 18px; border: 1px solid var(--g3); border-radius: 9px; background: var(--g5); }
+.mobile-setup-status p { margin: 0 0 12px; line-height: 1.7; }
+.mobile-setup-status p:last-child { margin-bottom: 0; }
+.mobile-setup-status .campaign-send { display: inline-flex; align-items: center; text-decoration: none; margin-bottom: 12px; }
+.mobile-setup-status.is-ready { border-color: #214332; }

@@ -27,6 +27,14 @@ Add `?demo` to the URL to view the scripted demo. Demo messages do not run Codex
 
 Keys: `F` frame, `T` timeline, `D` demo/live, `Esc` clear, `Ctrl+K` palette.
 
+## Phone and multiple computers
+
+Use **Computadoras → Mi teléfono** for a private access link and QR code, then add the panel to your phone's home screen. **Computadoras** selects the machine that receives your objectives. Pair another HQ with its private HTTPS address and the code revealed on that computer. The current destination is always displayed; an unavailable computer returns an error, and a changed destination rejects a stale objective.
+
+Follow the [three-step Spanish setup guide](docs/mobile-setup.md). The double-click installers in `scripts/` build HQ and register automatic startup on macOS or Windows. Personal configuration and pairing keys remain outside this repository. This Mac's service can stay awake on AC power while the screen sleeps; an entirely powered-off computer must start or wake before it can execute work.
+
+Tailscale Serve publishes HTTPS inside your private network. HQ still binds to loopback. Configure the exact HTTPS origin with `NAPOLEON_PUBLIC_URL` or `~/.codex/napoleon/mobile.json`; mobile access requires a separate private code, an HttpOnly cookie, and the page's CSRF token for actions. Never expose this server directly to the public Internet. The managed service finishes HTTPS setup after your Tailscale login and restarts only HQ to apply it.
+
 ## Legacy Claude mod
 
 The original Claude mode and peer MCP bridge are also available:

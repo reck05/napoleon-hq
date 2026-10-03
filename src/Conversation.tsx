@@ -23,10 +23,11 @@ function Bubble({ m }: { m: Msg & { isAnswer?: boolean } }) {
  * Everything said to one agent (its birth prompt, later messages, your orders) and its answer,
  * plus a box to send it a new order. Orders go to server.mjs, which the mod delivers.
  */
-export function Conversation({ to, agentName, convo, answer, isLive, isDemo }: { to: string; agentName: string; convo: Msg[]; answer?: { t: number; text: string }; isLive: boolean; isDemo: boolean }) {
+export function Conversation({ to, agentName, convo, answer, isLive, isDemo, deviceId, connected }: { to: string; agentName: string; convo: Msg[]; answer?: { t: number; text: string }; isLive: boolean; isDemo: boolean; deviceId?: string; connected: boolean }) {
   const [draft, setDraft] = useState('')
   const [local, setLocal] = useState<Msg[]>([])
   const [error, setError] = useState('')
+  const [sending, setSending] = useState(false)
   const box = useRef<HTMLTextAreaElement>(null)
 
   // a local echo disappears once the mod reports the same order back
@@ -36,6 +37,7 @@ export function Conversation({ to, agentName, convo, answer, isLive, isDemo }: {
   useEffect(() => { setDraft(''); setLocal([]); setError('') }, [to])
 
   const send = async () => {
+    if (sending || (!isDemo && !connected)) return
     const text = draft.trim()
     if (!text) { setError('Escribe una orden primero'); box.current?.focus(); return }
     setError('')
@@ -45,15 +47,16 @@ export function Conversation({ to, agentName, convo, answer, isLive, isDemo }: {
       return
     }
     setLocal(l => [...l, { t: Date.now(), from: 'tú', text, status: 'enviando' }])
+    setSending(true)
     setDraft('')
     try {
-      await post('/api/send', { to, text })
+      await post('/api/send', { to, text, deviceId })
       setLocal(l => l.map(m => (m.text === text && m.status === 'enviando' ? { ...m, status: 'entregado' } : m)))
     } catch (e) {
       setLocal(l => l.filter(m => m.text !== text))
       setDraft(text)
       setError(e instanceof Error ? e.message : 'no se pudo enviar')
-    }
+    } finally { setSending(false) }
   }
 
   const all: (Msg & { isAnswer?: boolean })[] = [...convo, ...local]
@@ -72,13 +75,14 @@ export function Conversation({ to, agentName, convo, answer, isLive, isDemo }: {
           ref={box}
           rows={2}
           value={draft}
+          disabled={!isDemo && !connected}
           placeholder={to === 'napoleon' ? 'Orden para Napoleon…' : isLive ? 'Escribe una orden para este agente…' : 'Ya terminó: tu orden lo retomará vía Napoleon…'}
           onChange={e => { setDraft(e.target.value); setError('') }}
           onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send() } }}
         />
         <div className="c-actions">
           {error ? <span className="c-error">{error}</span> : <span className="faint">Ctrl + Enter</span>}
-          <button className="txt is-on" onClick={() => void send()}>enviar</button>
+          <button className="txt is-on" disabled={sending || (!isDemo && !connected)} onClick={() => void send()}>{sending ? 'enviando…' : 'enviar'}</button>
         </div>
       </div>
     </section>
