@@ -2,7 +2,7 @@ import { memo, useEffect, useRef } from 'react'
 import type { Edge, EdgeProps } from '@xyflow/react'
 import type { Pulse } from './types'
 
-export type BranchT = Edge<{ dir: 'down' | 'right'; isLive: boolean; isFailed: boolean; isDimmed: boolean; pulses: Pulse[] }, 'branch'>
+export type BranchT = Edge<{ dir: 'down' | 'right'; isPeer?: boolean; isLive: boolean; isFailed: boolean; isDimmed: boolean; pulses: Pulse[] }, 'branch'>
 
 /** Family-tree connector: stem out of the parent, along the sibling bar, into the child. Soft corners. */
 export function elbow(sx: number, sy: number, tx: number, ty: number, dir: 'down' | 'right' = 'down') {
@@ -42,7 +42,7 @@ export const Branch = memo(function Branch({ sourceX, sourceY, targetX, targetY,
   if (!data) return null
   const d = elbow(sourceX, sourceY, targetX, targetY, data.dir)
   return (
-    <g className={`b ${data.isLive ? 'b-live' : ''} ${data.isFailed ? 'b-fail' : ''}`} opacity={data.isDimmed ? 0.12 : 1}>
+    <g className={`b ${data.isLive ? 'b-live' : ''} ${data.isFailed ? 'b-fail' : ''} ${data.isPeer ? 'b-peer' : ''}`} opacity={data.isDimmed ? 0.12 : 1}>
       <path d={d} className="b-line" />
       {data.isLive && <path d={d} className="b-flow" />}
       {data.pulses.map(p => <Spark key={p.id} d={d} p={p} />)}

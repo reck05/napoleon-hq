@@ -217,3 +217,9 @@ button:disabled, input:disabled { opacity: 0.4; cursor: default; }
 .request-card input { display: block; width: 100%; margin-top: 8px; }
 .request-options, .request-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
 @media (max-width: 600px) { .campaign-form { flex-wrap: wrap; } .campaign-form input { flex-basis: 100%; } .campaign-context > .faint { margin-left: 0; } .projects-dialog { padding: 20px; } .project-list li { flex-wrap: wrap; } }
+
+/* connected accounts (peers) */
+.n-peer { border-style: dashed; border-color: var(--g2); }
+.n-peer.n-live { border-color: var(--fg); }
+.n-peer .n-dot { background: var(--fg); }
+.b-peer .b-line { stroke-dasharray: 3 4; stroke: var(--g2); }

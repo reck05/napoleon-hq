@@ -17,6 +17,16 @@ import { NAPOLEON, type HQState } from './types'
 const nodeTypes = { agent: AgentNode, napoleon: NapoleonNode }
 const edgeTypes = { branch: Branch }
 const EMPTY: HQState = { v: 1, updatedAt: 0, sessionStart: Date.now(), napoleon: { calls: 0, log: [], voice: '' }, agents: [] }
+// connected accounts (Codex, another Claude) drawn as Napoleon's first children, their chat taken from Napoleon's
+export function peerAgents(state: HQState): HQState['agents'] {
+  return (state.peers ?? []).map(p => ({
+    id: `peer:${p.name}`, type: 'peer', area: 'Conexión', areaKey: 'peer', description: p.name,
+    status: p.isWaiting ? 'running' : 'idle', tool: p.isWaiting ? 'esperando a Napoleon' : undefined,
+    calls: p.count, startedAt: p.firstSeen, log: [], voice: '',
+    convo: (state.napoleon.convo ?? []).filter(m => m.from === p.name || m.status === `a ${p.name}`),
+  }))
+}
+
 const CAP = 120 // ponytail: oldest finished agents drop off past this; paginate the tree if campaigns get bigger
 
 type GraphProps = {
@@ -37,8 +47,8 @@ function Graph({ state, selected, filter, onSelect, fitRef, focusRef }: GraphPro
   const agents = useMemo(() => {
     const done = state.agents.filter(a => a.status !== 'running')
     const drop = new Set(done.slice(0, Math.max(0, state.agents.length - CAP)).map(a => a.id))
-    return state.agents.filter(a => !drop.has(a.id))
-  }, [state.agents])
+    return [...peerAgents(state), ...state.agents.filter(a => !drop.has(a.id))]
+  }, [state])
   // the tree turns (top-down ⇄ left-right) to whichever orientation shows it largest
   const canvas = useRef<HTMLDivElement>(null)
   const [dir, setDir] = useState<Dir>('down')
@@ -109,7 +119,7 @@ function Graph({ state, selected, filter, onSelect, fitRef, focusRef }: GraphPro
     return {
       id, source: parent, target: a.id, type: 'branch',
       sourceHandle: dir === 'down' ? 'b' : 'r', targetHandle: dir === 'down' ? 't' : 'l',
-      data: { dir, isLive: a.status === 'running', isFailed: a.status === 'failed' || a.status === 'killed', isDimmed: isDim(a.id, a.areaKey), pulses: pulses.filter(p => p.edge === id) },
+      data: { dir, isPeer: a.type === 'peer', isLive: a.status === 'running', isFailed: a.status === 'failed' || a.status === 'killed', isDimmed: isDim(a.id, a.areaKey), pulses: pulses.filter(p => p.edge === id) },
     }
   })
 
@@ -175,13 +185,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [isPaletteOpen, toggleMode, toggleTimeline])
 
-  const counts = useMemo(() => new Map(AREAS.map(a => [a.key, view.agents.filter(x => x.areaKey === a.key).length])), [view.agents])
+  const displayAgents = useMemo(() => [...peerAgents(view), ...view.agents], [view])
+  const counts = useMemo(() => new Map(AREAS.map(a => [a.key, displayAgents.filter(x => x.areaKey === a.key).length])), [displayAgents])
 
   return (
     <ReactFlowProvider>
       <div className="app">
-        <TopBar state={state} mode={mode} link={link} isTimelineOn={isTimelineOn} onMode={toggleMode} onTimeline={toggleTimeline} onPalette={() => setPalette(true)} onProjects={() => { setMode('live'); setProjectsOpen(true) }} />
-        {mode === 'live' ? <CampaignBar connection={connection} onProjects={() => setProjectsOpen(true)} onConversation={() => setSelected(NAPOLEON)} /> : <div />}
+        <TopBar state={state} mode={mode} link={link} isTimelineOn={isTimelineOn} onMode={toggleMode} onTimeline={toggleTimeline} onPalette={() => setPalette(true)} projectsEnabled={connection?.engine !== 'claude'} onProjects={() => { setMode('live'); setProjectsOpen(true) }} />
+        {mode === 'live' && connection?.engine !== 'claude' ? <CampaignBar connection={connection} onProjects={() => setProjectsOpen(true)} onConversation={() => setSelected(NAPOLEON)} /> : <div />}
         <main className="stage">
           <Graph state={view} selected={selected} filter={filter} onSelect={setSelected} fitRef={fitRef} focusRef={focusRef} />
 
@@ -196,16 +207,16 @@ export default function App() {
           <AnimatePresence>
             {view.agents.length === 0 && !view.napoleon.convo?.length && mode === 'live' && (
               <motion.p className="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                {connection?.activeProjectId ? 'Tu coordinador está listo. Escribe el objetivo arriba para empezar.' : 'Selecciona un proyecto para conectar tu campaña con Codex.'}
+                {connection?.engine === 'claude' ? 'Sin agentes. Abre Claude Code con el mod orquestador para conectar la campaña.' : connection?.activeProjectId ? 'Tu coordinador está listo. Escribe el objetivo arriba para empezar.' : 'Selecciona un proyecto para conectar tu campaña con Codex.'}
               </motion.p>
             )}
           </AnimatePresence>
 
           <AnimatePresence>
-            {selected && <Inspector state={view} id={selected} isDemo={mode === 'demo'} onClose={() => setSelected(undefined)} onSelect={id => { setSelected(id); focusRef.current(id) }} />}
+            {selected && <Inspector state={{ ...view, agents: displayAgents }} id={selected} isDemo={mode === 'demo'} onClose={() => setSelected(undefined)} onSelect={id => { setSelected(id); focusRef.current(id) }} />}
           </AnimatePresence>
         </main>
-        {isProjectsOpen && <Projects connection={connection} onClose={() => setProjectsOpen(false)} onSelected={() => { setProjectsOpen(false); setSelected(NAPOLEON) }} />}
+        {isProjectsOpen && connection?.engine !== 'claude' && <Projects connection={connection} onClose={() => setProjectsOpen(false)} onSelected={() => { setProjectsOpen(false); setSelected(NAPOLEON) }} />}
         <Requests connection={connection} />
         <AnimatePresence initial={false}>
           {isTimelineOn && (

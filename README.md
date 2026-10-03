@@ -29,4 +29,32 @@ Keys: `F` frame, `T` timeline, `D` demo/live, `Esc` clear, `Ctrl+K` palette.
 
 ## Legacy Claude mod
 
-`mod/orquestador` is the original Claude connector, retained as source. The current HQ server uses Codex. The legacy mod still has Windows paths and is not used by this setup. `Napoleon HQ.vbs` is a legacy Windows launcher; on Mac use `npm run serve`.
+The original Claude mode and peer MCP bridge are also available:
+
+```bash
+npm run serve -- --engine=claude
+```
+
+This mode reads `~/.claude/napoleon/state.json`, queues orders for the Claude mod, and supports `ask_claude`, `get_claude_reply` and `claude_status` through `peer-mcp.mjs`. Each peer appears as a dashed node with its conversation. `NAPOLEON_ENGINE=claude` selects the same mode. Codex remains the default.
+
+Load the Claude mod with `claude --plugin-dir mod/orquestador`. The mod still contains Windows paths at the top of `hooks/register.tsx`; configure these for your machine before using it. Its automatic server launch selects Claude mode explicitly. On Mac use `npm run serve`; `Napoleon HQ.vbs` is the Windows launcher.
+
+## Peers: other agents and accounts
+
+`peer-mcp.mjs` lets an MCP client talk to the Claude session. Authentication uses the local key in `~/.claude/napoleon/peer.key`. This interface requires Claude mode and will reject requests to a Codex coordinator rather than send them to the wrong engine.
+
+Example for Codex (`~/.codex/config.toml`), replacing the path with your checkout:
+
+```toml
+[mcp_servers.napoleon]
+command = "node"
+args = ["/absolute/path/to/napoleon-hq/peer-mcp.mjs"]
+tool_timeout_sec = 1800
+
+[mcp_servers.napoleon.env]
+NAPOLEON_PEER = "Codex"
+```
+
+Another Claude account: `claude mcp add napoleon -e NAPOLEON_PEER="Claude 2" -- node /absolute/path/to/napoleon-hq/peer-mcp.mjs`.
+
+For a custom data directory set `NAPOLEON_PEER_KEY_FILE` to the matching `peer.key` file. `NAPOLEON_URL` selects a different HQ port or address.

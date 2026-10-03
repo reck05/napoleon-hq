@@ -26,7 +26,7 @@ export const fmtTokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` :
 export const clockOf = (t: number) => new Date(t).toLocaleTimeString('es-ES', { hour12: false })
 
 export const statusLabel = (s: string) =>
-  s === 'running' ? 'en marcha' : s === 'completed' ? 'hecho' : s === 'failed' ? 'falló' : s === 'killed' ? 'detenido' : s
+  s === 'running' ? 'en marcha' : s === 'completed' ? 'hecho' : s === 'failed' ? 'falló' : s === 'killed' ? 'detenido' : s === 'idle' ? 'conectado' : s
 
 export const store = {
   get: (k: string) => { try { return localStorage.getItem(k) } catch { return null } },

@@ -25,12 +25,16 @@ export type Agent = {
 
 export type HQState = {
   v: 1
-  engine?: 'codex'
+  engine?: 'codex' | 'claude'
   updatedAt: number
   sessionStart: number
   napoleon: { tool?: string; calls: number; log: LogEntry[]; voice: string; usage?: Usage; convo?: Msg[] }
   agents: Agent[]
+  peers?: Peer[]
 }
+
+// another agent or account talking to Napoleon through HQ (Codex, a second Claude Code)
+export type Peer = { name: string; firstSeen: number; lastSeen: number; isWaiting: boolean; count: number }
 
 export type Pulse = { id: string; edge: string; kind: 'spawn' | 'call' | 'report' | 'fail'; color: string; at: number }
 
@@ -38,4 +42,4 @@ export const NAPOLEON = 'napoleon'
 
 export type Project = { id: string; name: string; kind: 'local' | 'chatgpt'; path: string | null; url: string | null; available: boolean; active: boolean }
 export type PendingRequest = { id: string | number; method: string; params: { command?: string; reason?: string; threadId?: string; permissions?: unknown; questions?: { id: string; question: string; options?: { label: string; description: string }[] }[] } }
-export type Connection = { engine: 'codex'; connected: boolean; authenticated: boolean; error: string; activeProjectId: string | null; projectName: string | null; busy: boolean; requests: PendingRequest[] }
+export type Connection = { engine: 'codex' | 'claude'; connected: boolean; authenticated: boolean; error: string; activeProjectId: string | null; projectName: string | null; busy: boolean; requests: PendingRequest[] }
