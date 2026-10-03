@@ -15,7 +15,7 @@ export async function readRemoteJSON(response, { maxBytes = 2 * 1024 * 1024 } = 
 }
 
 export async function* readRemoteEvents(response, { controller, maxFrameBytes = 8 * 1024 * 1024, idleMs = 45000 } = {}) {
-  if (!response.headers.get('content-type')?.startsWith('text/event-stream')) throw new Error('El equipo remoto no devolvió eventos válidos')
+  if (response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'text/event-stream') throw new Error('El equipo remoto no devolvió eventos válidos')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let pending = ''

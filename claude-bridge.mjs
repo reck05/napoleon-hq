@@ -5,6 +5,7 @@ import crypto from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { query } from '@anthropic-ai/claude-agent-sdk'
+import { protect, protectDirectory } from './secure.mjs'
 
 const run = promisify(execFile)
 const read = (file, fallback) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return fallback } }
@@ -14,7 +15,10 @@ const row = () => ({ calls: 0, log: [], voice: '', convo: [] })
 export class ClaudeBridge {
   constructor({ dir, root, onChange, queryFn = query, authFn }) {
     this.dir = path.join(dir, 'claude')
-    fs.mkdirSync(this.dir, { recursive: true })
+    fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 })
+    protectDirectory(this.dir)
+    const savedFile = path.join(this.dir, 'bridge.json')
+    if (fs.existsSync(savedFile)) protect(savedFile)
     this.catalogFile = path.join(dir, 'projects.json')
     this.root = root
     this.onChange = onChange
@@ -31,7 +35,11 @@ export class ClaudeBridge {
     this.error = ''
   }
   changed() { this.onChange?.() }
-  save() { fs.writeFileSync(path.join(this.dir, 'bridge.json'), JSON.stringify(this.saved), { mode: 0o600 }) }
+  save() {
+    const file = path.join(this.dir, 'bridge.json')
+    fs.writeFileSync(file, JSON.stringify(this.saved), { mode: 0o600 })
+    protect(file)
+  }
   projects() { return read(this.catalogFile, []).map(p => ({ ...p, available: p.kind === 'local' && !!p.path && fs.existsSync(p.path), active: p.id === this.saved.activeProjectId })) }
   active() { return this.saved.sessions[this.saved.activeProjectId] }
   connection() {

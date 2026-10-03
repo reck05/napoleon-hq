@@ -50,6 +50,7 @@ export class DeviceManager {
     this.label = os.hostname().replace(/\.local$/, '')
     this.data = { id: crypto.randomUUID(), selectedId: 'local', devices: [] }
     if (fs.existsSync(this.file)) {
+      protect(this.file)
       this.data = validateRegistry(JSON.parse(fs.readFileSync(this.file, 'utf8')))
     }
     this.save()

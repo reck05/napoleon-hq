@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { protect } from './secure.mjs'
+import { protect, protectDirectory } from './secure.mjs'
 
 const equal = (a, b) => typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
 const respond = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)) }
@@ -9,7 +9,7 @@ const localAddress = value => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(
 
 export function createAccess({ dir, port, publicUrl: configured }) {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
-  if (process.platform !== 'win32') fs.chmodSync(dir, 0o700)
+  protectDirectory(dir)
   const file = path.join(dir, 'access.key')
   if (!fs.existsSync(file)) fs.writeFileSync(file, crypto.randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' })
   protect(file)

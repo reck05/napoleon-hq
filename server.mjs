@@ -125,7 +125,7 @@ async function proxyDevice(req, res, url, device) {
     const body = message ? JSON.stringify(message) : undefined
     const response = await devices.request(device, url.pathname + url.search, { method: req.method, body, signal: controller.signal })
     if (events && response.ok) {
-      if (!response.headers.get('content-type')?.startsWith('text/event-stream')) throw new Error('Respuesta de eventos inválida')
+      if (response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'text/event-stream') throw new Error('Respuesta de eventos inválida')
       clearTimeout(timer)
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
       for await (let event of readRemoteEvents(response, { controller })) {

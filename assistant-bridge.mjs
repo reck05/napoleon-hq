@@ -2,10 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { CodexBridge } from './codex-bridge.mjs'
 import { ClaudeBridge } from './claude-bridge.mjs'
+import { protect } from './secure.mjs'
 
 export class AssistantBridge {
   constructor(options) {
     this.file = path.join(options.dir, 'assistant.json')
+    if (fs.existsSync(this.file)) protect(this.file)
     this.bridges = { codex: new CodexBridge(options), claude: new ClaudeBridge(options) }
     this.engine = 'codex'
     try { const saved = JSON.parse(fs.readFileSync(this.file)); if (['codex', 'claude'].includes(saved.engine)) this.engine = saved.engine } catch { /* default */ }
@@ -25,6 +27,7 @@ export class AssistantBridge {
     try {
     this.engine = engine
     fs.writeFileSync(this.file, JSON.stringify({ engine }), { mode: 0o600 })
+    protect(this.file)
     await this.active.start()
     if (projectId && this.active.connection().authenticated && !this.active.connection().activeProjectId) await this.active.select(projectId)
     this.changed?.()

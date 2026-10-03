@@ -95,5 +95,10 @@ test('private mobile access protects pages, state and orders behind HTTPS proxy'
     assert.match(accepted.headers['set-cookie'][0], /HttpOnly/)
     assert.equal((await redeem({ ...local, origin: 'http://localhost:4517' })).status, 403)
     assert.equal((await request('/api/session', { headers: { ...local, authorization: 'Bearer ' + code } })).status, 401)
+    const expiredCode = JSON.parse((await issue(owner)).body).code
+    const now = Date.now()
+    const clock = t.mock.method(Date, 'now', () => now + 61000)
+    try { assert.equal((await redeem({ ...local, origin: 'http://localhost:4517' }, expiredCode)).status, 403) }
+    finally { clock.mock.restore() }
   })
 })

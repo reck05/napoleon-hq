@@ -3,9 +3,10 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { protect } from '../secure.mjs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { protect, protectDirectory, isPrivate } from '../secure.mjs'
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const LABEL = 'com.napoleon.hq'
@@ -15,9 +16,14 @@ export async function requestLocalTicket({ dir = dataDir(), port = 4517, fetcher
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Puerto local inválido (1024–65535)')
   const keyFile = path.join(dir, 'access.key')
   let key
-  try { key = fs.readFileSync(keyFile, 'utf8').trim() } catch { throw new Error('Napoleon todavía no ha creado su acceso local. Espera a que el servicio esté preparado.') }
+  if (!fs.existsSync(keyFile)) throw new Error('Napoleon todavía no ha creado su acceso local. Espera a que el servicio esté preparado.')
+  try {
+    protectDirectory(dir)
+    protect(keyFile)
+    if (!isPrivate(keyFile)) throw new Error('key is not private')
+    key = fs.readFileSync(keyFile, 'utf8').trim()
+  } catch { throw new Error('No se pudo leer un acceso local protegido; no he abierto el navegador.') }
   if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('La clave de acceso local no es válida; no he abierto el navegador.')
-  if (process.platform !== 'win32') { fs.chmodSync(dir, 0o700); fs.chmodSync(keyFile, 0o600) }
   try {
     const response = await fetcher(`http://127.0.0.1:${port}/api/access/local-ticket`, {
       method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
@@ -29,10 +35,33 @@ export async function requestLocalTicket({ dir = dataDir(), port = 4517, fetcher
     return { code: ticket.code, expiresIn: ticket.expiresIn }
   } catch { throw new Error('No se pudo preparar un acceso temporal a Napoleon. No he abierto el navegador ni mostrado tu clave.') }
 }
-export function localLaunch({ code, port = 4517, platform = process.platform } = {}) {
+const LAUNCH_FILE = /^launch-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.html$/
+export function cleanupLaunchFiles({ dir = dataDir(), now = Date.now() } = {}) {
+  for (const name of fs.readdirSync(dir)) {
+    if (!LAUNCH_FILE.test(name)) continue
+    const file = path.join(dir, name)
+    const entry = fs.lstatSync(file)
+    if (entry.isFile() && now - entry.mtimeMs > 60000) fs.unlinkSync(file)
+  }
+}
+export function createLocalLaunchFile({ dir = dataDir(), code, port = 4517 } = {}) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Puerto local inválido (1024–65535)')
   if (typeof code !== 'string' || !/^[a-f0-9]{64}$/.test(code)) throw new Error('El código temporal de acceso no es válido; no he abierto el navegador.')
-  const url = `http://localhost:${port}/#access=${code}`
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+  protectDirectory(dir)
+  cleanupLaunchFiles({ dir })
+  const file = path.resolve(dir, `launch-${crypto.randomUUID()}.html`)
+  try {
+    fs.writeFileSync(file, '', { flag: 'wx', mode: 0o600 })
+    protect(file)
+    if (!isPrivate(file)) throw new Error('file is not private')
+    fs.writeFileSync(file, `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url=http://localhost:${port}/#access=${code}"><title>Abriendo Napoleon</title></head><body>Abriendo Napoleon…</body></html>`)
+    return file
+  } catch { fs.rmSync(file, { force: true }); throw new Error('No se pudo preparar un archivo privado de acceso. No he abierto el navegador.') }
+}
+export function localLaunch({ file, platform = process.platform } = {}) {
+  if (typeof file !== 'string' || !path.isAbsolute(file) || !LAUNCH_FILE.test(path.basename(file)) || !fs.lstatSync(file).isFile() || !isPrivate(path.dirname(file)) || !isPrivate(file)) throw new Error('El archivo privado de acceso no es válido; no he abierto el navegador.')
+  const url = pathToFileURL(file).href
   if (platform === 'darwin') return { command: '/usr/bin/open', args: [url] }
   if (platform === 'win32') return { command: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', url] }
   if (platform === 'linux') return { command: 'xdg-open', args: [url] }
@@ -52,14 +81,17 @@ export async function openLocalApp({ dir = dataDir(), port = 4517, platform = pr
   let ticket
   try { ticket = await getTicket({ dir, port }) }
   catch { throw new Error('No se pudo preparar un acceso temporal a Napoleon. No he mostrado tu clave.') }
-  const { command, args } = localLaunch({ code: ticket?.code, port, platform })
-  await new Promise((resolve, reject) => {
-    let child
-    try { child = launch(command, args, { shell: false, stdio: 'ignore' }) }
-    catch { reject(new Error('No se pudo abrir Napoleon en el navegador. No he mostrado tu código de acceso.')); return }
-    child.once('error', () => reject(new Error('No se pudo abrir Napoleon en el navegador. No he mostrado tu código de acceso.')))
-    child.once('exit', code => code === 0 ? resolve() : reject(new Error('El navegador no pudo abrir Napoleon. Vuelve a intentarlo.')))
-  })
+  const file = createLocalLaunchFile({ dir, code: ticket?.code, port })
+  try {
+    const { command, args } = localLaunch({ file, platform })
+    await new Promise((resolve, reject) => {
+      let child
+      try { child = launch(command, args, { shell: false, stdio: 'ignore' }) }
+      catch { reject(new Error('No se pudo abrir Napoleon en el navegador. No he mostrado tu código de acceso.')); return }
+      child.once('error', () => reject(new Error('No se pudo abrir Napoleon en el navegador. No he mostrado tu código de acceso.')))
+      child.once('exit', code => code === 0 ? resolve() : reject(new Error('El navegador no pudo abrir Napoleon. Vuelve a intentarlo.')))
+    })
+  } catch (error) { fs.rmSync(file, { force: true }); throw error }
 }
 const configPath = () => path.join(dataDir(), 'setup.json')
 const mobilePath = () => path.join(dataDir(), 'mobile.json')
@@ -82,6 +114,8 @@ async function runInteractive(command, args) {
 async function ensureCodex(login) {
   let binary = findExecutable('codex')
   if (!binary) {
+    fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 })
+    protectDirectory(dataDir())
     const npmBinary = findExecutable('npm')
     const candidates = [path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'), path.join(path.dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')]
     if (npmBinary) { try { candidates.unshift(fs.realpathSync(npmBinary)) } catch { /* use Node installation candidates */ } }
@@ -130,6 +164,7 @@ function writeMobileStatus(phase, message, actionUrl = '') {
   const contents = JSON.stringify(status, null, 2) + '\n'
   try { if (fs.readFileSync(mobileStatusPath(), 'utf8') === contents) return } catch { /* initial status */ }
   fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 })
+  protectDirectory(dataDir())
   fs.writeFileSync(mobileStatusPath(), contents, { mode: 0o600 })
   protect(mobileStatusPath())
 }
@@ -151,6 +186,7 @@ function readConfig() {
 }
 function saveConfig(config) {
   fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 })
+  protectDirectory(dataDir())
   fs.writeFileSync(configPath(), JSON.stringify(config, null, 2) + '\n', { mode: 0o600 })
   protect(configPath())
   if (config.publicUrl) {
@@ -194,7 +230,9 @@ function initProjects() {
   const file = path.join(dataDir(), 'projects.json')
   if (fs.existsSync(file)) return
   fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 })
+  protectDirectory(dataDir())
   fs.writeFileSync(file, JSON.stringify([{ id: 'napoleon-local', name: 'Napoleon', kind: 'local', path: ROOT }], null, 2) + '\n', { mode: 0o600, flag: 'wx' })
+  protect(file)
 }
 async function configureServe(config, state, quiet = false) {
   if (!state.installed) throw new Error('Instala Tailscale desde https://tailscale.com/download y entra con tu cuenta.')
@@ -308,6 +346,7 @@ export async function main(args = process.argv.slice(2)) {
     if (args.includes('--dry-run')) { console.log(contents); return }
     if (platform !== process.platform) throw new Error('Usa --platform solamente junto a --dry-run.')
     fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 })
+    protectDirectory(dataDir())
     if (platform === 'darwin') {
       const dir = path.join(os.homedir(), 'Library', 'LaunchAgents'); fs.mkdirSync(dir, { recursive: true })
       const target = path.join(dir, `${LABEL}.plist`); fs.writeFileSync(target, contents, { mode: 0o600 })
@@ -316,6 +355,7 @@ export async function main(args = process.argv.slice(2)) {
       checked('/bin/launchctl', ['bootstrap', domain, target]); checked('/bin/launchctl', ['kickstart', `${domain}/${LABEL}`])
     } else {
       const target = path.join(dataDir(), 'windows-task.xml'); fs.writeFileSync(target, contents, { mode: 0o600 })
+      protect(target)
       checked('schtasks.exe', ['/Create', '/TN', 'Napoleon HQ', '/XML', target, '/F']); checked('schtasks.exe', ['/Run', '/TN', 'Napoleon HQ'])
     }
     console.log('Napoleon se iniciará al entrar en tu cuenta.'); return

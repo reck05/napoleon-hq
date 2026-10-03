@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import fs from 'node:fs'
 import path from 'node:path'
+import { protect, protectDirectory } from './secure.mjs'
 import os from 'node:os'
 
 const readJSON = (file, fallback) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return fallback } }
@@ -16,11 +17,9 @@ export class CodexBridge {
     this.root = root
     this.onChange = onChange
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
-    if (process.platform !== 'win32') {
-      fs.chmodSync(dir, 0o700)
-      const savedFile = path.join(dir, 'bridge.json')
-      if (fs.existsSync(savedFile)) fs.chmodSync(savedFile, 0o600)
-    }
+    protectDirectory(dir)
+    const savedFile = path.join(dir, 'bridge.json')
+    if (fs.existsSync(savedFile)) protect(savedFile)
     this.saved = readJSON(path.join(dir, 'bridge.json'), { activeProjectId: null, sessions: {} })
     this.catalog = readJSON(path.join(dir, 'projects.json'), [])
     this.sessions = new Map()
@@ -284,7 +283,7 @@ export class CodexBridge {
       this.saved.activeProjectId = projectId
       const file = path.join(this.dir, 'bridge.json')
       fs.writeFileSync(file, JSON.stringify(this.saved, null, 2), { mode: 0o600 })
-      if (process.platform !== 'win32') fs.chmodSync(file, 0o600)
+      protect(file)
       this.changed()
       return { ok: true, projectId, threadId: id }
     } finally { this.selection = null }

@@ -1,28 +1,51 @@
 // Owner-only files for secrets (access.key, device.key, peer.key, devices.json, mobile config).
-// POSIX: mode 0600. Windows ignores POSIX modes (it reports 0666), so the ACL is reset instead:
-// inheritance removed and full control granted to the current user alone.
+// POSIX: mode 0600. On Windows, fix ownership, remove inheritance, grant the
+// current identity and verify the exact ACL. Unexpected explicit grants fail closed.
 import fs from 'node:fs'
-import os from 'node:os'
 import { execFileSync } from 'node:child_process'
 
 const isWindows = process.platform === 'win32'
-const user = () => os.userInfo().username
-const account = () => (process.env.USERDOMAIN ? `${process.env.USERDOMAIN}\\${user()}` : user())
+const account = () => {
+  const identity = execFileSync('whoami', [], { encoding: 'utf8', windowsHide: true }).trim()
+  if (!/^[^\\\r\n:]+\\[^\\\r\n:]+$/.test(identity)) throw new Error('No se pudo verificar la identidad de Windows')
+  return identity
+}
+
+export function ownerOnlyWindowsAcl(output, file, identity, directory = false) {
+  const block = output.split(/\r?\n\s*\r?\n/)[0]
+  const lines = block.split(/\r?\n/)
+  if (!lines[0]?.startsWith(file + ' ')) return false
+  const aces = lines.map((line, i) => (i === 0 ? line.slice(file.length) : line).trim()).filter(Boolean)
+  if (aces.length !== 1) return false
+  const separator = aces[0].lastIndexOf(':')
+  const principal = aces[0].slice(0, separator)
+  const rights = aces[0].slice(separator + 1)
+  return principal.toLowerCase() === identity.toLowerCase()
+    && (directory ? rights === '(OI)(CI)(F)' : rights === '(F)')
+}
+
+function protectWindows(file, directory) {
+  const identity = account()
+  execFileSync('icacls', [file, '/setowner', identity], { stdio: 'ignore', windowsHide: true })
+  execFileSync('icacls', [file, '/inheritance:r', '/grant:r', `${identity}:${directory ? '(OI)(CI)F' : 'F'}`], { stdio: 'ignore', windowsHide: true })
+  const out = execFileSync('icacls', [file], { encoding: 'utf8', windowsHide: true })
+  if (!ownerOnlyWindowsAcl(out, file, identity, directory)) throw new Error('Windows conserva permisos de otra cuenta. Napoleon no utilizará este archivo hasta corregir sus permisos.')
+}
 
 export function protect(file) {
   if (!isWindows) return fs.chmodSync(file, 0o600)
-  execFileSync('icacls', [file, '/inheritance:r', '/grant:r', `${account()}:F`], { stdio: 'ignore', windowsHide: true })
+  protectWindows(file, false)
+}
+
+export function protectDirectory(dir) {
+  if (!isWindows) return fs.chmodSync(dir, 0o700)
+  protectWindows(dir, true)
 }
 
 /** True when only the owner can reach the file: mode 0600, or on Windows a single, non-inherited ACE for the current user. */
 export function isPrivate(file) {
-  if (!isWindows) return (fs.statSync(file).mode & 0o777) === 0o600
+  const directory = fs.statSync(file).isDirectory()
+  if (!isWindows) return (fs.statSync(file).mode & 0o777) === (directory ? 0o700 : 0o600)
   const out = execFileSync('icacls', [file], { encoding: 'utf8', windowsHide: true })
-  // first line is "<path> <ACE>", the next ones are indented ACEs, then a blank line and a (localized) summary
-  const block = out.split(/\r?\n\s*\r?\n/)[0]
-  const aces = block.split(/\r?\n/).map((line, i) => (i === 0 ? line.slice(file.length) : line).trim()).filter(Boolean)
-  if (aces.length !== 1) return false
-  const [principal, rights] = [aces[0].slice(0, aces[0].lastIndexOf(':')), aces[0].slice(aces[0].lastIndexOf(':') + 1)]
-  const name = principal.split('\\').pop().toLowerCase()
-  return name === user().toLowerCase() && !rights.includes('(I)') && rights.includes('(F)')
+  return ownerOnlyWindowsAcl(out, file, account(), directory)
 }
