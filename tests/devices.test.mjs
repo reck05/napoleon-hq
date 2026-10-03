@@ -7,6 +7,7 @@ import net from 'node:net'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { DeviceManager, deviceUrl } from '../devices.mjs'
+import { isPrivate } from '../secure.mjs'
 
 test('device addresses require private HTTPS or loopback HTTP without credentials', () => {
   assert.equal(deviceUrl('https://workstation.example.ts.net/'), 'https://workstation.example.ts.net')
@@ -21,8 +22,8 @@ test('device secrets and identity persist with private permissions', t => {
   const second = new DeviceManager({ dir, port: 4517, engine: 'codex' })
   assert.equal(first.key, second.key)
   assert.equal(first.info().id, second.info().id)
-  assert.equal(fs.statSync(first.keyFile).mode & 0o777, 0o600)
-  assert.equal(fs.statSync(first.file).mode & 0o777, 0o600)
+  assert.ok(isPrivate(first.keyFile), 'device.key must be owner-only')
+  assert.ok(isPrivate(first.file), 'devices.json must be owner-only')
   assert.equal(first.authenticated({ headers: { 'x-device-key': first.key } }), true)
   assert.equal(first.authenticated({ headers: { 'x-device-key': 'é'.repeat(64) } }), false)
 })
@@ -76,7 +77,7 @@ test('two HQ servers pair, route mutations and SSE, and report offline without f
     assert.equal(listed.devices[1].online, true)
     assert.equal(listed.devices[1].label, 'Second computer')
     assert.equal(JSON.stringify(listed).includes(second.key), false)
-    assert.equal(fs.statSync(path.join(first.dir, 'devices.json')).mode & 0o777, 0o600)
+    assert.ok(isPrivate(path.join(first.dir, 'devices.json')), 'devices.json must stay owner-only after writes')
   })
   await t.test('selected destinations route reads, writes and live events without cycles', async () => {
     assert.equal((await first.post('/api/devices/select', { id: second.info.id })).status, 200)

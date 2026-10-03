@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { protect } from '../secure.mjs'
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const LABEL = 'com.napoleon.hq'
@@ -80,7 +81,7 @@ function writeMobileStatus(phase, message, actionUrl = '') {
   try { if (fs.readFileSync(mobileStatusPath(), 'utf8') === contents) return } catch { /* initial status */ }
   fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 })
   fs.writeFileSync(mobileStatusPath(), contents, { mode: 0o600 })
-  if (process.platform !== 'win32') fs.chmodSync(mobileStatusPath(), 0o600)
+  protect(mobileStatusPath())
 }
 function updateNetworkStatus(state, config) {
   if (!state.installed) writeMobileStatus('error', 'Instala Tailscale en este equipo para conectar tu teléfono')
@@ -101,8 +102,11 @@ function readConfig() {
 function saveConfig(config) {
   fs.mkdirSync(dataDir(), { recursive: true, mode: 0o700 })
   fs.writeFileSync(configPath(), JSON.stringify(config, null, 2) + '\n', { mode: 0o600 })
-  if (config.publicUrl) fs.writeFileSync(mobilePath(), JSON.stringify({ publicUrl: config.publicUrl }, null, 2) + '\n', { mode: 0o600 })
-  if (process.platform !== 'win32') fs.chmodSync(configPath(), 0o600)
+  protect(configPath())
+  if (config.publicUrl) {
+    fs.writeFileSync(mobilePath(), JSON.stringify({ publicUrl: config.publicUrl }, null, 2) + '\n', { mode: 0o600 })
+    protect(mobilePath())
+  }
 }
 function tailState() {
   const binary = findExecutable('tailscale')

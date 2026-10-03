@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { protect } from './secure.mjs'
 
 const equal = (a, b) => typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
 const respond = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)) }
@@ -10,7 +11,7 @@ export function createAccess({ dir, port, publicUrl: configured }) {
   fs.mkdirSync(dir, { recursive: true })
   const file = path.join(dir, 'access.key')
   if (!fs.existsSync(file)) fs.writeFileSync(file, crypto.randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' })
-  fs.chmodSync(file, 0o600)
+  protect(file)
   const key = fs.readFileSync(file, 'utf8').trim()
   if (!/^[a-f0-9]{64}$/.test(key)) throw new Error('La clave de acceso móvil no es válida')
   let saved = {}

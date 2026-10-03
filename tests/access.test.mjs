@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import http from 'node:http'
 import { createAccess } from '../access.mjs'
+import { isPrivate } from '../secure.mjs'
 
 test('private mobile access protects pages, state and orders behind HTTPS proxy', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'napoleon-access-'))
@@ -25,7 +26,7 @@ test('private mobile access protects pages, state and orders behind HTTPS proxy'
   const link = access.pairingLink()
   assert.equal(new URL(link.url).hash, '#access=' + link.code)
   assert.equal(new URL(link.url).search, '')
-  assert.equal(fs.statSync(path.join(dir, 'access.key')).mode & 0o777, 0o600)
+  assert.ok(isPrivate(path.join(dir, 'access.key')), 'access.key must be owner-only (0600, or a single non-inherited ACE on Windows)')
   assert.equal(createAccess({ dir, port: 4517, publicUrl }).pairingLink().code, link.code)
   await t.test('remote assets and API never reveal private state or access key before login', async () => {
     const page = await request('/')

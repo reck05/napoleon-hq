@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import crypto from 'node:crypto'
+import { protect } from './secure.mjs'
 
 export function deviceUrl(input) {
   let url
@@ -18,7 +19,7 @@ export class DeviceManager {
     this.file = path.join(dir, 'devices.json')
     this.keyFile = path.join(dir, 'device.key')
     if (!fs.existsSync(this.keyFile)) fs.writeFileSync(this.keyFile, crypto.randomBytes(32).toString('hex'), { mode: 0o600, flag: 'wx' })
-    fs.chmodSync(this.keyFile, 0o600)
+    protect(this.keyFile)
     this.key = fs.readFileSync(this.keyFile, 'utf8').trim()
     if (!/^[a-f0-9]{64}$/.test(this.key)) throw new Error('La clave de esta computadora no es válida')
     this.engine = engine
@@ -35,7 +36,7 @@ export class DeviceManager {
   save() {
     const temporary = this.file + '.tmp'
     fs.writeFileSync(temporary, JSON.stringify(this.data, null, 2), { mode: 0o600 })
-    fs.chmodSync(temporary, 0o600)
+    protect(temporary)
     fs.renameSync(temporary, this.file)
   }
   authenticated(req) {

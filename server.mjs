@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { CodexBridge } from './codex-bridge.mjs'
 import { DeviceManager } from './devices.mjs'
 import { createAccess } from './access.mjs'
+import { protect } from './secure.mjs'
 
 const PORT = Number(process.env.PORT ?? 4517)
 const ENGINE = process.argv.includes('--engine=claude') ? 'claude' : (process.env.NAPOLEON_ENGINE ?? 'codex')
@@ -30,6 +31,7 @@ if (ENGINE === 'claude') {
   fs.mkdirSync(REPLIES, { recursive: true })
   const keyFile = path.join(DIR, 'peer.key')
   if (!fs.existsSync(keyFile)) fs.writeFileSync(keyFile, crypto.randomBytes(24).toString('hex'), { mode: 0o600 })
+  protect(keyFile)
   peerKey = fs.readFileSync(keyFile, 'utf8').trim()
   if (!peerKey) throw new Error('The Claude peer key must not be empty')
 }
