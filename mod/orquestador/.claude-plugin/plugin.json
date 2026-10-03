@@ -1,0 +1,1 @@
+{ "name": "orquestador", "version": "0.1.0", "description": "Live pane: Claude as orchestrator with its subagents spinning up in real time", "types": "./types/index.d.ts" }
