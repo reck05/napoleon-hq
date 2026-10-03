@@ -182,3 +182,9 @@ kbd { font: 10px var(--mono); color: var(--g2); }
 .c-compose textarea::placeholder { color: var(--g2); }
 .c-actions { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px 8px; font: 10.5px var(--mono); }
 .c-error { color: var(--fail); }
+
+/* connected accounts (peers) */
+.n-peer { border-style: dashed; border-color: var(--g2); }
+.n-peer.n-live { border-color: var(--fg); }
+.n-peer .n-dot { background: var(--fg); }
+.b-peer .b-line { stroke-dasharray: 3 4; stroke: var(--g2); }

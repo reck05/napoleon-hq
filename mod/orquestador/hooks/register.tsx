@@ -7,12 +7,13 @@ const PANE = 'orquestador'
 const BOSS = 'Napoleon'
 const ROOT = '__root'
 const view = atom({ plugin: 'orquestador', key: 'view' } as const, { agents: [], mainCalls: 0 } as View)
-const feed = atom({ plugin: 'orquestador', key: 'feed' } as const, { sessionStart: 0, main: [], logs: {}, answers: {}, usage: {}, convo: {}, pending: [], lastSeq: 0 } as Feed)
+const feed = atom({ plugin: 'orquestador', key: 'feed' } as const, { sessionStart: 0, main: [], logs: {}, answers: {}, usage: {}, convo: {}, pending: [], lastSeq: 0, peers: {} } as Feed)
 
 // ponytail: fixed paths shared with napoleon-hq/server.mjs; a userConfig option if this ever runs on another machine
 const DIR = 'C:/Users/Usuario/.claude/napoleon'
 const STATE_FILE = `${DIR}/state.json`
 const OUTBOX = `${DIR}/outbox.jsonl`
+const REPLIES = `${DIR}/replies`
 const SERVER = 'C:/Users/Usuario/Documents/napoleon-hq/server.mjs'
 const HQ_URL = 'http://localhost:4517'
 
@@ -104,6 +105,7 @@ function queueWrite($: EngineInterface) {
         updatedAt: now,
         sessionStart: f.sessionStart,
         napoleon: { tool: v.main, calls: v.mainCalls, log: f.main, voice: voices.get('') ?? '', usage: f.usage[''], convo: f.convo[''] ?? [] },
+        peers: Object.entries(f.peers ?? {}).map(([name, p]) => ({ name, ...p })),
         agents: v.agents.map(a => ({
           ...a,
           areaKey: areaOf(a.type)?.name ?? 'otros',
@@ -120,9 +122,19 @@ function queueWrite($: EngineInterface) {
 }
 
 // ---- orders typed in HQ: server.mjs appends them to the outbox, this delivers them ----
-type Order = { seq: number; to: string; text: string; t: number }
+type Order = { seq: number; to: string; text: string; t: number; from?: string }
+
+// the order whose answer Napoleon's next main-loop turn is: its reply goes back to HQ or to the peer that asked
+let awaiting: { seq: number; from: string } | undefined
+let isDelivering = false
 
 async function deliverOrders($: EngineInterface) {
+  if (isDelivering) return
+  isDelivering = true
+  try { await deliverOrdersOnce($) } finally { isDelivering = false }
+}
+
+async function deliverOrdersOnce($: EngineInterface) {
   const raw = await $.fs.read(OUTBOX).catch(() => '')
   if (!raw) return
   const { lastSeq } = await read($, feed)
@@ -132,8 +144,20 @@ async function deliverOrders($: EngineInterface) {
     const text = o.text.trim()
     if (!text) continue
     if (o.to === 'napoleon') {
-      await $.prompt.submit({ text: `[Orden desde Napoleon HQ] ${text}` })
-      await update($, feed, f => pushMsg(f, '', { t: o.t, from: 'tú', text, status: 'en cola' }))
+      const from = o.from ?? 'tú'
+      const isPeer = !!o.from
+      if (isPeer) await update($, feed, f => ({ ...f, peers: { ...f.peers, [from]: { firstSeen: f.peers?.[from]?.firstSeen ?? o.t, lastSeen: o.t, isWaiting: true, count: (f.peers?.[from]?.count ?? 0) + 1 } } }))
+      await update($, feed, f => pushMsg(f, '', { t: o.t, from, text, status: 'en cola' }))
+      queueWrite($)
+      // resolves as the turn starts; that turn's turn.complete is the reply
+      await $.prompt.submit({
+        text: isPeer
+          ? `[Mensaje de ${from} vía Napoleon HQ] ${text}
+
+(Tu próxima respuesta se le reenviará a ${from} tal cual: respóndele directamente.)`
+          : `[Orden desde Napoleon HQ] ${text}`,
+      })
+      awaiting = { seq: o.seq, from }
     } else {
       const { agents } = await read($, view)
       const a = agents.find(x => x.id === o.to)
@@ -259,9 +283,19 @@ export const register: Register = on => {
     }
   })
 
-  // each agent's final answer and token bill
+  // each agent's final answer and token bill; on the main loop, the reply owed to HQ or to a peer
   on('turn.complete', async ($, e, next) => {
     const id = e.agentId ?? ''
+    if (!id && awaiting) {
+      const { seq, from } = awaiting
+      awaiting = undefined
+      const t = await $.clock.now()
+      await $.fs.write(`${REPLIES}/${seq}.json`, JSON.stringify({ text: e.answer, at: t })).catch(() => undefined)
+      await update($, feed, f => ({
+        ...pushMsg(f, '', { t, from: BOSS, text: cut(e.answer, 4000), status: `a ${from}` }),
+        peers: f.peers?.[from] ? { ...f.peers, [from]: { ...f.peers[from], isWaiting: false, lastSeen: t } } : f.peers,
+      }))
+    }
     const u = e.usage
     await update($, feed, f => ({
       ...f,

@@ -76,14 +76,27 @@ export function Inspector({ state, id, isDemo, onClose, onSelect }: Props) {
           </section>
         )}
 
-        <Conversation
+        {a?.type === 'peer' ? (
+          <section className="convo">
+            <h3>conversación con Napoleon <span className="faint">{a.convo?.length ?? 0}</span></h3>
+            <ul className="c-list">
+              {(a.convo ?? []).map(m => (
+                <li key={`${m.t}-${m.from}`} className={`c-msg ${m.from === 'Napoleon' ? 'is-answer' : 'is-you'}`}>
+                  <div className="c-meta"><span>{m.from}</span><span className="faint">{clockOf(m.t)}</span></div>
+                  <div className="c-text">{m.text}</div>
+                </li>
+              ))}
+            </ul>
+            <p className="faint">{a.description} habla con Napoleon desde su propia app, con la herramienta ask_claude.</p>
+          </section>
+        ) : <Conversation
           to={id}
           agentName={isRoot ? 'Napoleon' : 'agente'}
           convo={(isRoot ? state.napoleon.convo : a!.convo) ?? []}
           answer={!isRoot && a!.answer ? { t: a!.endedAt ?? now, text: a!.answer } : undefined}
           isLive={isRoot || a!.status === 'running'}
           isDemo={isDemo}
-        />
+        />}
 
         {!isRoot && (
           <section>

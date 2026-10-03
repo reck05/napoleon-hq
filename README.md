@@ -21,3 +21,21 @@ Keys: `F` frame, `T` timeline, `D` demo/live, `Esc` clear, `Ctrl+K` palette.
 ## Mod
 
 Load `mod/orquestador` with `claude --plugin-dir mod/orquestador`. The state paths and the server path are constants at the top of `hooks/register.tsx`.
+
+## Peers: other agents and accounts
+
+`peer-mcp.mjs` is an MCP server (stdio) that lets any MCP client (Codex, a second Claude Code account, Cursor) talk to your Claude session: `ask_claude`, `get_claude_reply`, `claude_status`. Each peer appears in HQ as a dashed node with its conversation. Auth is the local key in `~/.claude/napoleon/peer.key`.
+
+Codex (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.napoleon]
+command = 'C:\Program Files\nodejs\node.exe'
+args = ['C:\path\to\napoleon-hq\peer-mcp.mjs']
+tool_timeout_sec = 1800
+
+[mcp_servers.napoleon.env]
+NAPOLEON_PEER = "Codex"
+```
+
+Another Claude Code account: `claude mcp add napoleon -e NAPOLEON_PEER="Claude 2" -- node C:\path\to\napoleon-hq\peer-mcp.mjs`

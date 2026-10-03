@@ -16,6 +16,16 @@ import { NAPOLEON, type HQState } from './types'
 const nodeTypes = { agent: AgentNode, napoleon: NapoleonNode }
 const edgeTypes = { branch: Branch }
 const EMPTY: HQState = { v: 1, updatedAt: 0, sessionStart: Date.now(), napoleon: { calls: 0, log: [], voice: '' }, agents: [] }
+// connected accounts (Codex, another Claude) drawn as Napoleon's first children, their chat taken from Napoleon's
+export function peerAgents(state: HQState): HQState['agents'] {
+  return (state.peers ?? []).map(p => ({
+    id: `peer:${p.name}`, type: 'peer', area: 'Conexión', areaKey: 'peer', description: p.name,
+    status: p.isWaiting ? 'running' : 'idle', tool: p.isWaiting ? 'esperando a Napoleon' : undefined,
+    calls: p.count, startedAt: p.firstSeen, log: [], voice: '',
+    convo: (state.napoleon.convo ?? []).filter(m => m.from === p.name || m.status === `a ${p.name}`),
+  }))
+}
+
 const CAP = 120 // ponytail: oldest finished agents drop off past this; paginate the tree if campaigns get bigger
 
 type GraphProps = {
@@ -36,8 +46,8 @@ function Graph({ state, selected, filter, onSelect, fitRef, focusRef }: GraphPro
   const agents = useMemo(() => {
     const done = state.agents.filter(a => a.status !== 'running')
     const drop = new Set(done.slice(0, Math.max(0, state.agents.length - CAP)).map(a => a.id))
-    return state.agents.filter(a => !drop.has(a.id))
-  }, [state.agents])
+    return [...peerAgents(state), ...state.agents.filter(a => !drop.has(a.id))]
+  }, [state])
   // the tree turns (top-down ⇄ left-right) to whichever orientation shows it largest
   const canvas = useRef<HTMLDivElement>(null)
   const [dir, setDir] = useState<Dir>('down')
@@ -108,7 +118,7 @@ function Graph({ state, selected, filter, onSelect, fitRef, focusRef }: GraphPro
     return {
       id, source: parent, target: a.id, type: 'branch',
       sourceHandle: dir === 'down' ? 'b' : 'r', targetHandle: dir === 'down' ? 't' : 'l',
-      data: { dir, isLive: a.status === 'running', isFailed: a.status === 'failed' || a.status === 'killed', isDimmed: isDim(a.id, a.areaKey), pulses: pulses.filter(p => p.edge === id) },
+      data: { dir, isPeer: a.type === 'peer', isLive: a.status === 'running', isFailed: a.status === 'failed' || a.status === 'killed', isDimmed: isDim(a.id, a.areaKey), pulses: pulses.filter(p => p.edge === id) },
     }
   })
 
@@ -199,7 +209,7 @@ export default function App() {
           </AnimatePresence>
 
           <AnimatePresence>
-            {selected && <Inspector state={view} id={selected} isDemo={mode === 'demo'} onClose={() => setSelected(undefined)} onSelect={id => { setSelected(id); focusRef.current(id) }} />}
+            {selected && <Inspector state={{ ...view, agents: [...peerAgents(view), ...view.agents] }} id={selected} isDemo={mode === 'demo'} onClose={() => setSelected(undefined)} onSelect={id => { setSelected(id); focusRef.current(id) }} />}
           </AnimatePresence>
         </main>
         <AnimatePresence initial={false}>

@@ -110,9 +110,15 @@ export function demoState(t0: number, now: number): HQState {
   const napLog: LogEntry[] = [{ t: at(0.4), tool: 'Read', detail: 'Plan de trabajo IMPLICA.xlsx' }, ...spawns.map(r => ({ t: at(r[4] - 0.8), tool: 'Agent', detail: r[3] }))]
   const isDelegating = ROWS.some(r => !r[1] && el >= r[4] - 0.8 && el < r[4] + 0.6)
   const napVoice = el < 10 ? 'Doce tareas en el plan de hoy. Las reparto por área.' : el > 21 && el < 26 ? 'ATLAS ha caído. Relanzo con otra táctica.' : el > 76 ? 'Campaña cerrada. Preparo el resumen.' : ''
+  // Codex, connected as a peer, asks Napoleon for context halfway through the campaign
+  const codexAsk = { t: at(18), from: 'Codex', text: '¿Qué criterios de comprador usa IMPLICA para un build-up industrial? Los necesito para el filtro del script de Deal Lander.', status: 'en cola' }
+  const codexReply = { t: at(27), from: 'Napoleon', text: 'Mayoría o integración total; facturación del comprador ≥ 3× la del target; operaciones de M&A en los últimos 5 años; presencia o interés declarado en España. Fuente: criterios internos del área de Originación.', status: 'a Codex' }
+  const convo = el >= 27 ? [codexAsk, codexReply] : el >= 18 ? [codexAsk] : []
+  const peers = el >= 18 ? [{ name: 'Codex', firstSeen: at(18), lastSeen: at(el >= 27 ? 27 : 18), isWaiting: el < 27, count: 1 }] : []
+
   return {
-    v: 1, updatedAt: now, sessionStart: base,
-    napoleon: { tool: isDelegating ? 'Agent' : undefined, calls: napLog.length, log: napLog, voice: napVoice, usage: { input: Math.round(el * 5200), output: Math.round(el * 300), cacheRead: Math.round(el * 30000), model: 'claude-opus-5-5' } },
+    v: 1, updatedAt: now, sessionStart: base, peers,
+    napoleon: { tool: isDelegating ? 'Agent' : undefined, calls: napLog.length, log: napLog, voice: napVoice, convo, usage: { input: Math.round(el * 5200), output: Math.round(el * 300), cacheRead: Math.round(el * 30000), model: 'claude-opus-5-5' } },
     agents,
   }
 }

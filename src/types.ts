@@ -29,7 +29,11 @@ export type HQState = {
   sessionStart: number
   napoleon: { tool?: string; calls: number; log: LogEntry[]; voice: string; usage?: Usage; convo?: Msg[] }
   agents: Agent[]
+  peers?: Peer[]
 }
+
+// another agent or account talking to Napoleon through HQ (Codex, a second Claude Code)
+export type Peer = { name: string; firstSeen: number; lastSeen: number; isWaiting: boolean; count: number }
 
 export type Pulse = { id: string; edge: string; kind: 'spawn' | 'call' | 'report' | 'fail'; color: string; at: number }
 

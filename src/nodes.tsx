@@ -30,11 +30,12 @@ function Morph({ text, className }: { text: string; className?: string }) {
 export const AgentNode = memo(function AgentNode({ data }: NodeProps<AgentNodeT>) {
   const { agent: a, isSelected, isDimmed } = data
   const now = useNow(1000)
-  const state = a.status === 'running' ? 'live' : a.status === 'completed' ? 'done' : 'fail'
-  const sub = state === 'live' ? a.tool ?? 'arrancando' : state === 'done' ? 'hecho' : 'falló'
+  const isPeer = a.type === 'peer'
+  const state = a.status === 'running' ? 'live' : a.status === 'completed' || a.status === 'idle' ? 'done' : 'fail'
+  const sub = isPeer ? (a.tool ?? `conectado · ${a.calls} mensajes`) : state === 'live' ? a.tool ?? 'arrancando' : state === 'done' ? 'hecho' : 'falló'
   return (
     <motion.div
-      className={`n n-${state} ${isSelected ? 'is-sel' : ''}`}
+      className={`n n-${state} ${isPeer ? 'n-peer' : ''} ${isSelected ? 'is-sel' : ''}`}
       style={{ ['--c' as string]: areaOf(a.areaKey).color }}
       initial={{ opacity: 0, scale: 0.6 }}
       animate={{ opacity: isDimmed ? 0.14 : 1, scale: 1 }}
@@ -47,7 +48,7 @@ export const AgentNode = memo(function AgentNode({ data }: NodeProps<AgentNodeT>
       </div>
       <div className="n-row n-meta">
         <Morph text={sub} className="n-tool" />
-        <span className="n-time">{fmtDur((a.endedAt ?? now) - a.startedAt)}</span>
+        {!isPeer && <span className="n-time">{fmtDur((a.endedAt ?? now) - a.startedAt)}</span>}
       </div>
       {state === 'live' && <i className="n-scan" />}
     </motion.div>
